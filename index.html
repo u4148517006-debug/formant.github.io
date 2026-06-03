@@ -142,4 +142,293 @@
         let maxVal = -1;
         let periodSamples = 200; // デフォルト値のバックアップ
         for (let i = minLag; i <= maxLag; i++) {
-            if (r[i] > maxVal && r[i] > r[i-1] && r[i] > r
+            if (r[i] > maxVal && r[i] > r[i-1] && r[i] > r[i+1]) {
+                maxVal = r[i];
+                periodSamples = i;
+            }
+        }
+
+        // ピークが見つかった位置（＝1周期の長さ）から波形を切り出す
+        const rawSegment = signal.slice(0, periodSamples);
+
+        // 5つの波形を綺麗にブレンドするために、すべて一律で「PERIOD_SIZE (512)」の長さに線形補間（伸縮）する
+        let resampled = new Float32Array(PERIOD_SIZE);
+        for (let i = 0; i < PERIOD_SIZE; i++) {
+            const targetIdx = (i / PERIOD_SIZE) * (rawSegment.length - 1);
+            const baseIdx = Math.floor(targetIdx);
+            const frac = targetIdx - baseIdx;
+            resampled[i] = (1 - frac) * rawSegment[baseIdx] + frac * (rawSegment[baseIdx + 1] || rawSegment[baseIdx]);
+        }
+
+        // 平均値（直流成分）を引いてセンターを0に合わせる（ゼロクロス処理）
+        let avg = 0;
+        for(let i=0; i<PERIOD_SIZE; i++) avg += resampled[i];
+        avg /= PERIOD_SIZE;
+        for(let i=0; i<PERIOD_SIZE; i++) resampled[i] -= avg;
+
+        return resampled;
+    }
+
+    // --- 下部の5つの静的波形（1周期）描画処理 ---
+    function drawStaticWave(canvasId, dataArray, color) {
+        const canvas = document.getElementById(canvasId);
+        const ctx = canvas.getContext('2d');
+        canvas.width = canvas.clientWidth;
+        canvas.height = canvas.clientHeight;
+        
+        ctx.fillStyle = '#111';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        // ゼロクロス基準線
+        ctx.strokeStyle = '#333';
+        ctx.beginPath(); ctx.moveTo(0, canvas.height/2); ctx.lineTo(canvas.width, canvas.height/2); ctx.stroke();
+
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        
+        const sliceWidth = canvas.width / dataArray.length;
+        for (let i = 0; i < dataArray.length; i++) {
+            const x = i * sliceWidth;
+            // 振幅をCanvasの縦幅に合わせてスケーリング
+            const y = canvas.height / 2 - (dataArray[i] * canvas.height * 0.4);
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+    }
+
+    // --- 音声生成周りの初期化 ---
+    function initAudioGraph() {
+        oscillator = audioCtx.createOscillator();
+        oscillator.frequency.value = 130; // ループの再生ピッチ（あーーーーの高さを固定）
+
+        gainNode = audioCtx.createGain();
+        gainNode.gain.value = 0.0;
+
+        analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 512;
+
+        oscillator.connect(gainNode);
+        gainNode.connect(analyser);
+        analyser.connect(audioCtx.destination);
+
+        oscillator.start();
+        updateTimeDomainSynthesis();
+        drawOscilloscopeLoop();
+    }
+
+    // --- 🌟 コアロジック：時間軸波形のブレンドと再生への反映 ---
+    function updateTimeDomainSynthesis() {
+        let totalWeight = 0;
+        let weights = [];
+        const p = 2; 
+
+        vowels.forEach(v => {
+            const dx = currentX - v.x;
+            const dy = currentY - v.y;
+            const distance = Math.sqrt(dx*dx + dy*dy);
+            const weight = distance === 0 ? 999999 : 1 / Math.pow(distance, p);
+            weights.push(weight);
+            totalWeight += weight;
+        });
+
+        let statusTexts = [];
+        const normalizedWeights = weights.map((w, idx) => {
+            const ratio = w / totalWeight;
+            statusTexts.push(`${vowels[idx].label}:${Math.round(ratio * 100)}%`);
+            return ratio;
+        });
+        blendRatioEl.textContent = statusTexts.join(" | ");
+
+        // 5つの1周期波形(時間軸)を比率に沿って足し算（ブレンド）する
+        let blendedWave = new Float32Array(PERIOD_SIZE);
+        for (let i = 0; i < PERIOD_SIZE; i++) {
+            let sumSample = 0;
+            for (let j = 0; j < vowels.length; j++) {
+                sumSample += vowels[j].rawPeriod[i] * normalizedWeights[j];
+            }
+            blendedWave[i] = sumSample;
+        }
+
+        // 🌟 ブレンドされた時間波形をフーリエ変換にかけ、PeriodicWaveに再変換してオシロスコープへ流す
+        // これにより、時間軸でモーフィングされた「1周期波形」を無限に美しくループ再生（あーーー）できます
+        if (audioCtx && oscillator) {
+            let real = new Float32Array(PERIOD_SIZE / 2 + 1);
+            let imag = new Float32Array(PERIOD_SIZE / 2 + 1);
+
+            // 簡易離散フーリエ変換でPeriodicWave用の倍音成分を抽出（位相情報：imag も完全に保持するため音が汚くなりません！）
+            for (let k = 0; k < real.length; k++) {
+                let r_sum = 0;
+                let i_sum = 0;
+                for (let n = 0; n < PERIOD_SIZE; n++) {
+                    const angle = (2 * Math.PI * k * n) / PERIOD_SIZE;
+                    r_sum += blendedWave[n] * Math.cos(angle);
+                    i_sum -= blendedWave[n] * Math.sin(angle);
+                }
+                real[k] = r_sum / PERIOD_SIZE;
+                imag[k] = i_sum / PERIOD_SIZE;
+            }
+
+            const wave = audioCtx.createPeriodicWave(real, imag, {disableNormalization: false});
+            oscillator.setPeriodicWave(wave);
+        }
+    }
+
+    // --- UI（タッチパッド）リサイズ・描画 ---
+    function resizeCanvases() {
+        padCanvas.width = padCanvas.clientWidth;
+        padCanvas.height = padCanvas.clientHeight;
+        oscCanvas.width = oscCanvas.clientWidth;
+        oscCanvas.height = oscCanvas.clientHeight;
+        drawPad();
+    }
+    window.addEventListener('resize', resizeCanvases);
+
+    function drawPad() {
+        const w = padCanvas.width;
+        const h = padCanvas.height;
+        padCtx.clearRect(0, 0, w, h);
+
+        // グリッド
+        padCtx.strokeStyle = '#e8e8e8';
+        padCtx.lineWidth = 1;
+        for(let i=1; i<5; i++) {
+            padCtx.beginPath(); padCtx.moveTo(w * (i/5), 0); padCtx.lineTo(w * (i/5), h); padCtx.stroke();
+            padCtx.beginPath(); padCtx.moveTo(0, h * (i/5)); padCtx.lineTo(w, h * (i/5)); taxation = padCtx.stroke();
+        }
+
+        // 5つの母音エリア
+        vowels.forEach(v => {
+            const cx = v.x * w;
+            const cy = v.y * h;
+            padCtx.fillStyle = v.color;
+            padCtx.strokeStyle = v.border;
+            padCtx.lineWidth = 2;
+            padCtx.beginPath();
+            padCtx.ellipse(cx, cy, w * 0.12, h * 0.08, v.label === 'O' || v.label === 'I' ? -Math.PI/6 : Math.PI/12, 0, 2 * Math.PI);
+            padCtx.fill();
+            padCtx.stroke();
+
+            padCtx.fillStyle = '#333';
+            padCtx.font = 'bold 15px sans-serif';
+            padCtx.textAlign = 'center';
+            padCtx.textBaseline = 'middle';
+            padCtx.fillText(v.label, cx, cy);
+        });
+
+        // 軌跡
+        if (trailPoints.length > 1) {
+            padCtx.lineWidth = 4;
+            padCtx.lineCap = 'round';
+            padCtx.lineJoin = 'round';
+            for (let i = 1; i < trailPoints.length; i++) {
+                const alpha = i / trailPoints.length;
+                padCtx.strokeStyle = `rgba(0, 120, 255, ${alpha * 0.6})`;
+                padCtx.beginPath();
+                padCtx.moveTo(trailPoints[i - 1].x * w, trailPoints[i - 1].y * h);
+                padCtx.lineTo(trailPoints[i].x * w, trailPoints[i].y * h);
+                padCtx.stroke();
+            }
+        }
+
+        // 現在値ポインタ
+        const px = currentX * w;
+        const py = currentY * h;
+        padCtx.strokeStyle = '#222';
+        padCtx.lineWidth = 2;
+        padCtx.beginPath();
+        padCtx.arc(px, py, 9, 0, 2*Math.PI);
+        padCtx.fillStyle = isPointerDown ? '#007bff' : 'rgba(0,0,0,0.1)';
+        padCtx.fill();
+        padCtx.stroke();
+    }
+
+    // --- オシロスコープ描画ループ ---
+    function drawOscilloscopeLoop() {
+        requestAnimationFrame(drawOscilloscopeLoop);
+        
+        if (isPointerDown) {
+            trailPoints.push({ x: currentX, y: currentY });
+            if (trailPoints.length > MAX_TRAIL_LENGTH) trailPoints.shift();
+        } else {
+            if (trailPoints.length > 0) trailPoints.shift();
+        }
+        drawPad();
+
+        if (!analyser || !isPlaying) return;
+
+        const bufferLength = analyser.frequencyBinCount;
+        const dataArray = new Uint8Array(bufferLength);
+        analyser.getByteTimeDomainData(dataArray);
+
+        oscCtx.fillStyle = '#111';
+        oscCtx.fillRect(0, 0, oscCanvas.width, oscCanvas.height);
+        oscCtx.lineWidth = 2;
+        oscCtx.strokeStyle = '#00ffcc';
+        oscCtx.beginPath();
+
+        const sliceWidth = oscCanvas.width / bufferLength;
+        let x = 0;
+        for (let i = 0; i < bufferLength; i++) {
+            const v = dataArray[i] / 128.0;
+            const y = (v * oscCanvas.height) / 2;
+            if (i === 0) oscCtx.moveTo(x, y);
+            else oscCtx.lineTo(x, y);
+            x += sliceWidth;
+        }
+        oscCtx.lineTo(oscCanvas.width, oscCanvas.height / 2);
+        oscCtx.stroke();
+    }
+
+    // --- パネル操作イベント ---
+    function handlePointer(e) {
+        const rect = padCanvas.getBoundingClientRect();
+        currentX = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+        currentY = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
+        updateTimeDomainSynthesis();
+    }
+
+    function setupPointerEvents() {
+        const onDown = (e) => {
+            isPointerDown = true;
+            trailPoints = [];
+            if (audioCtx && isPlaying) gainNode.gain.setTargetAtTime(0.2, audioCtx.currentTime, 0.02);
+            handlePointer(e);
+        };
+        const onMove = (e) => { if (isPointerDown) handlePointer(e); };
+        const onUp = () => {
+            isPointerDown = false;
+            if (audioCtx && isPlaying) gainNode.gain.setTargetAtTime(0.0, audioCtx.currentTime, 0.04);
+        };
+
+        padCanvas.addEventListener('mousedown', onDown);
+        window.addEventListener('mousemove', onMove);
+        window.addEventListener('mouseup', onUp);
+        padCanvas.addEventListener('touchstart', (e) => { onDown(e.touches[0]); e.preventDefault(); });
+        window.addEventListener('touchmove', (e) => { onMove(e.touches[0]); }, { passive: false });
+        window.addEventListener('touchend', onUp);
+    }
+
+    // 再生ボタン
+    playBtn.addEventListener('click', () => {
+        if (!isPlaying) {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            initAudioGraph();
+            setupPointerEvents();
+            isPlaying = true;
+            playBtn.textContent = '🔊 音声モーフィング中（パッドをなぞってね）';
+            playBtn.classList.add('playing');
+        } else {
+            audioCtx.suspend();
+            isPlaying = false;
+            playBtn.textContent = '🔒 タッチして音声を有効化';
+            playBtn.classList.remove('playing');
+        }
+    });
+
+    // 起動直後にWAVの自動解析を開始
+    window.addEventListener('DOMContentLoaded', loadAndAnalyzeWAVs);
+</script>
+</body>
+</html>
