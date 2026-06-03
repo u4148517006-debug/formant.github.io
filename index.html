@@ -3,16 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>声紋モーフィング・母音合成装置（軌跡表示版）</title>
-    <script src="a.js"></script>
-    <script src="i.js"></script>
-    <script src="u.js"></script>
-    <script src="e.js"></script>
-    <script src="o.js"></script>
+    <title>時間軸モーフィング・母音合成装置</title>
     <style>
         body { font-family: sans-serif; background: #eef2f3; padding: 15px; text-align: center; margin: 0; }
         .container { max-width: 600px; margin: 0 auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
-        h1 { font-size: 1.4rem; color: #333; margin-bottom: 15px; }
+        h1 { font-size: 1.4rem; color: #333; margin-bottom: 5px; }
+        .sub { font-size: 12px; color: #666; margin-bottom: 15px; }
         
         .pad-container { position: relative; width: 100%; max-width: 450px; margin: 0 auto; aspect-ratio: 1 / 1; }
         #vowelPad { background: #fafafa; border: 2px solid #ccc; border-radius: 8px; width: 100%; height: 100%; cursor: crosshair; touch-action: none; }
@@ -23,26 +19,28 @@
         
         button { padding: 12px 24px; font-size: 16px; font-weight: bold; cursor: pointer; background: #28a745; color: white; border: none; border-radius: 6px; margin-bottom: 15px; width: 100%; max-width: 450px; }
         button.playing { background: #dc3545; }
+        button:disabled { background: #ccc; cursor: not-allowed; }
 
         .vowel-charts { display: flex; justify-content: space-between; max-width: 450px; margin: 20px auto 0 auto; }
         .vowel-charts div { text-align: center; width: 18%; }
         .vowel-charts canvas { background: #222; width: 100%; height: 60px; border-radius: 4px; border: 1px solid #ddd; }
-        .vowel-charts p { margin: 3px 0 0 0; font-weight: bold; font-size: 12px; color: #555; }
+        .vowel-charts p { margin: 3px 0 0 0; font-weight: bold; font-size: 11px; color: #555; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h1>声紋モーフィング・タッチシンセ</h1>
+    <h1>1周期波形モーフィング・タッチシンセ</h1>
+    <div class="sub">WAVから1周期を自動抽出して合成します</div>
     
-    <button id="playBtn">🔒 タッチして音声を有効化</button>
+    <button id="playBtn" disabled>⏳ WAVファイルを読み込み中...</button>
 
     <div class="pad-container">
         <canvas id="vowelPad"></canvas>
     </div>
 
     <div class="status-bar">
-        <span id="blendRatio">各母音のブレンド比率を計算中...</span>
+        <span id="blendRatio">WAVの解析をお待ちください...</span>
     </div>
 
     <canvas id="oscilloscope"></canvas>
@@ -57,31 +55,28 @@
 </div>
 
 <script>
-    // --- 音声合成・制御用変数 ---
     let audioCtx = null;
-    let oscillator = null;
+    let oscillator = null; // 今回は渡されたカスタム1周期波形をループ再生する役割
     let gainNode = null;
     let analyser = null;
     let isPlaying = false;
 
-    // タッチの軌跡（履歴）を保存する配列
     let trailPoints = [];
-    const MAX_TRAIL_LENGTH = 25; // 軌跡の長さ（残像のフレーム数）
+    const MAX_TRAIL_LENGTH = 20;
 
-    // 母音マップの定義
+    // 母音の設定（WAVファイル名とマッピング）
     const vowels = [
-        { label: 'A', x: 0.60, y: 0.72, data: null, color: 'rgba(255, 0, 0, 0.15)', border: '#ff0000', canvasId: 'chartA' },
-        { label: 'I', x: 0.07, y: 0.28, data: null, color: 'rgba(0, 200, 0, 0.15)', border: '#00cc00', canvasId: 'chartI' },
-        { label: 'U', x: 0.12, y: 0.72, data: null, color: 'rgba(0, 0, 255, 0.15)', border: '#0000ff', canvasId: 'chartU' },
-        { label: 'E', x: 0.25, y: 0.36, data: null, color: 'rgba(255, 230, 0, 0.25)', border: '#d4af37', canvasId: 'chartE' },
-        { label: 'O', x: 0.25, y: 0.92, data: null, color: 'rgba(255, 0, 255, 0.15)', border: '#ff00ff', canvasId: 'chartO' }
+        { label: 'A', x: 0.60, y: 0.72, file: 'a.wav', rawPeriod: null, color: 'rgba(255, 0, 0, 0.15)', border: '#ff0000', canvasId: 'chartA' },
+        { label: 'I', x: 0.07, y: 0.28, file: 'i.wav', rawPeriod: null, color: 'rgba(0, 200, 0, 0.15)', border: '#00cc00', canvasId: 'chartI' },
+        { label: 'U', x: 0.12, y: 0.72, file: 'u.wav', rawPeriod: null, color: 'rgba(0, 0, 255, 0.15)', border: '#0000ff', canvasId: 'chartU' },
+        { label: 'E', x: 0.25, y: 0.36, file: 'e.wav', rawPeriod: null, color: 'rgba(255, 230, 0, 0.25)', border: '#d4af37', canvasId: 'chartE' },
+        { label: 'O', x: 0.25, y: 0.92, file: 'o.wav', rawPeriod: null, color: 'rgba(255, 0, 255, 0.15)', border: '#ff00ff', canvasId: 'chartO' }
     ];
 
     let currentX = 0.5;
     let currentY = 0.5;
     let isPointerDown = false;
 
-    // DOM要素
     const playBtn = document.getElementById('playBtn');
     const padCanvas = document.getElementById('vowelPad');
     const padCtx = padCanvas.getContext('2d');
@@ -89,306 +84,62 @@
     const oscCtx = oscCanvas.getContext('2d');
     const blendRatioEl = document.getElementById('blendRatio');
 
-    // データの安全なバインド関数
-    function bindVowelData() {
-        vowels.forEach(v => {
-            // 各JSファイル内の const vowel_A などの変数を安全に参照
-            // evalを避けるため一度スコープチェック
-            try {
-                if (v.label === 'A') v.data = vowel_A;
-                if (v.label === 'I') v.data = vowel_I;
-                if (v.label === 'U') v.data = vowel_U;
-                if (v.label === 'E') v.data = vowel_E;
-                if (v.label === 'O') v.data = vowel_O;
-            } catch (e) {
-                console.warn(`${v.label}のデータが見つかりません。ダミーデータを生成します。`);
-            }
+    // 固定サイズで1周期波形をリサンプリングするためのバッファサイズ
+    const PERIOD_SIZE = 512; 
 
-            // 万が一ファイルがなかったり読み込めなかった場合は、動かなくならないように無音のダミーを入れる
-            if (!v.data) {
-                v.data = new Float32Array(1025).fill(0);
-            }
-        });
-    }
-
-    function resizeCanvases() {
-        padCanvas.width = padCanvas.clientWidth;
-        padCanvas.height = padCanvas.clientHeight;
-        oscCanvas.width = oscCanvas.clientWidth;
-        oscCanvas.height = oscCanvas.clientHeight;
-        
-        bindVowelData();
-        
-        vowels.forEach(v => {
-            drawStaticSpectrum(v.canvasId, v.data, v.border);
-        });
-        drawPad();
-    }
-    window.addEventListener('resize', resizeCanvases);
-
-    // --- 下部グラフ描画 ---
-    function drawStaticSpectrum(canvasId, dataArray, color) {
-        const canvas = document.getElementById(canvasId);
-        const ctx = canvas.getContext('2d');
-        canvas.width = canvas.clientWidth;
-        canvas.height = canvas.clientHeight;
-        
-        ctx.fillStyle = '#111';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 1.5;
-        ctx.beginPath();
-        
-        const displayLength = 200; // 低域フォルマントを拡大
-        const sliceWidth = canvas.width / displayLength;
-        
-        for (let i = 0; i < displayLength; i++) {
-            const x = i * sliceWidth;
-            const val = dataArray[i] || 0;
-            const y = canvas.height - (val * canvas.height);
-            if (i === 0) ctx.moveTo(x, y);
-            else ctx.lineTo(x, y);
-        }
-        ctx.stroke();
-    }
-
-    // --- 音声生成初期化 ---
-    function initAudio() {
+    // 起動時にすべてのWAVを並列で読み込んで解析
+    async function loadAndAnalyzeWAVs() {
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         
-        oscillator = audioCtx.createOscillator();
-        oscillator.frequency.value = 125; // 声のベース音高
-
-        gainNode = audioCtx.createGain();
-        gainNode.gain.value = 0.0;
-
-        analyser = audioCtx.createAnalyser();
-        analyser.fftSize = 1024;
-
-        oscillator.connect(gainNode);
-        gainNode.connect(analyser);
-        analyser.connect(audioCtx.destination);
-
-        oscillator.start();
-        updateSpectrumSynthesis();
-        drawOscilloscope();
-    }
-
-    // --- フーリエブレンド合成コア ---
-    function updateSpectrumSynthesis() {
-        let totalWeight = 0;
-        let weights = [];
-        const p = 2.5; // 距離による減衰の鋭さ
-
-        vowels.forEach(v => {
-            const dx = currentX - v.x;
-            const dy = currentY - v.y;
-            const distance = Math.sqrt(dx*dx + dy*dy);
-            const weight = distance === 0 ? 999999 : 1 / Math.pow(distance, p);
-            weights.push(weight);
-            totalWeight += weight;
-        });
-
-        let statusTexts = [];
-        const normalizedWeights = weights.map((w, idx) => {
-            const ratio = w / totalWeight;
-            statusTexts.push(`${vowels[idx].label}:${Math.round(ratio * 100)}%`);
-            return ratio;
-        });
-        blendRatioEl.textContent = statusTexts.join(" | ");
-
-        const dataLength = 1025;
-        let blendedReal = new Float32Array(dataLength);
-        let blendedImag = new Float32Array(dataLength);
-
-        blendedReal[0] = 0; // DC成分カット
-
-        for (let i = 1; i < dataLength; i++) {
-            let sumSample = 0;
-            for (let j = 0; j < vowels.length; j++) {
-                const val = vowels[j].data[i] || 0;
-                sumSample += val * normalizedWeights[j];
-            }
-            blendedReal[i] = sumSample;
-        }
-
-        if (audioCtx && oscillator) {
-            const wave = audioCtx.createPeriodicWave(blendedReal, blendedImag, {disableNormalization: false});
-            oscillator.setPeriodicWave(wave);
-        }
-    }
-
-    // --- タッチパッド & 軌跡(Trail) 描画処理 ---
-    function drawPad() {
-        const w = padCanvas.width;
-        const h = padCanvas.height;
-        padCtx.clearRect(0, 0, w, h);
-
-        // 背景グリッド
-        padCtx.strokeStyle = '#e8e8e8';
-        padCtx.lineWidth = 1;
-        for(let i=1; i<5; i++) {
-            padCtx.beginPath(); padCtx.moveTo(w * (i/5), 0); padCtx.lineTo(w * (i/5), h); padCtx.stroke();
-            padCtx.beginPath(); padCtx.moveTo(0, h * (i/5)); padCtx.lineTo(w, h * (i/5)); padCtx.stroke();
-        }
-
-        // 5つの母音ベースサークル
-        vowels.forEach(v => {
-            const cx = v.x * w;
-            const cy = v.y * h;
-            padCtx.fillStyle = v.color;
-            padCtx.strokeStyle = v.border;
-            padCtx.lineWidth = 2;
-            padCtx.beginPath();
-            padCtx.ellipse(cx, cy, w * 0.12, h * 0.08, v.label === 'O' || v.label === 'I' ? -Math.PI/6 : Math.PI/12, 0, 2 * Math.PI);
-            padCtx.fill();
-            padCtx.stroke();
-
-            padCtx.fillStyle = '#333';
-            padCtx.font = 'bold 15px sans-serif';
-            padCtx.textAlign = 'center';
-            padCtx.textBaseline = 'middle';
-            padCtx.fillText(v.label, cx, cy);
-        });
-
-        // 🌟 軌跡の描画ロジック
-        if (trailPoints.length > 1) {
-            padCtx.lineWidth = 4;
-            padCtx.lineCap = 'round';
-            padCtx.lineJoin = 'round';
-
-            for (let i = 1; i < trailPoints.length; i++) {
-                const p1 = trailPoints[i - 1];
-                const p2 = trailPoints[i];
+        try {
+            const promises = vowels.map(async (v) => {
+                const response = await fetch(v.file);
+                const arrayBuffer = await response.arrayBuffer();
+                const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+                const channelData = audioBuffer.getChannelData(0); // モノラルとして1ch目を取得
                 
-                // 後ろに行く（古い）ほど透明になるグラデーション効果
-                const alpha = i / trailPoints.length;
-                padCtx.strokeStyle = `rgba(0, 150, 255, ${alpha * 0.6})`;
+                // 🌟 WAVの時間波形から自動で「1周期分」を検出して抽出
+                v.rawPeriod = extractOnePeriod(channelData, audioBuffer.sampleRate);
                 
-                padCtx.beginPath();
-                padCtx.moveTo(p1.x * w, p1.y * h);
-                padCtx.lineTo(p2.x * w, p2.y * h);
-                ctx.shadowBlur = 0; 
-                padCtx.stroke();
-            }
-        }
+                // 下部のミニCanvasに抽出した1周期波形を表示
+                drawStaticWave(v.canvasId, v.rawPeriod, v.border);
+            });
 
-        // 現在地のポインタの描画
-        const px = currentX * w;
-        const py = currentY * h;
-        padCtx.strokeStyle = '#222';
-        padCtx.lineWidth = 2;
-        padCtx.beginPath();
-        padCtx.arc(px, py, 9, 0, 2*Math.PI);
-        padCtx.fillStyle = isPointerDown ? '#007bff' : 'rgba(0,0,0,0.1)';
-        padCtx.fill();
-        padCtx.stroke();
-    }
-
-    // --- オシロスコープ描画 ---
-    function drawOscilloscope() {
-        requestAnimationFrame(drawOscilloscope);
-        
-        // 軌跡のライフサイクルを維持するため、鳴っていない時でもなぞれば軌跡を描画するループに回す
-        if (isPointerDown) {
-            trailPoints.push({ x: currentX, y: currentY });
-            if (trailPoints.length > MAX_TRAIL_LENGTH) {
-                trailPoints.shift();
-            }
-        } else {
-            // 離したときは徐々に消えていく
-            if (trailPoints.length > 0) {
-                trailPoints.shift();
-            }
-        }
-        drawPad();
-
-        if (!analyser || !isPlaying) return;
-
-        const bufferLength = analyser.frequencyBinCount;
-        const dataArray = new Uint8Array(bufferLength);
-        analyser.getByteTimeDomainData(dataArray);
-
-        oscCtx.fillStyle = '#111';
-        oscCtx.fillRect(0, 0, oscCanvas.width, oscCanvas.height);
-        oscCtx.lineWidth = 2;
-        oscCtx.strokeStyle = '#00ffcc';
-        oscCtx.beginPath();
-
-        const sliceWidth = oscCanvas.width / bufferLength;
-        let x = 0;
-        for (let i = 0; i < bufferLength; i++) {
-            const v = dataArray[i] / 128.0;
-            const y = (v * oscCanvas.height) / 2;
-            if (i === 0) oscCtx.moveTo(x, y);
-            else oscCtx.lineTo(x, y);
-            x += sliceWidth;
-        }
-        oscCtx.lineTo(oscCanvas.width, oscCanvas.height / 2);
-        oscCtx.stroke();
-    }
-
-    // --- イベント制御ハンドラ ---
-    function handlePointer(e) {
-        const rect = padCanvas.getBoundingClientRect();
-        let x = (e.clientX - rect.left) / rect.width;
-        let y = (e.clientY - rect.top) / rect.height;
-
-        currentX = Math.max(0, Math.min(1, x));
-        currentY = Math.max(0, Math.min(1, y));
-
-        updateSpectrumSynthesis();
-    }
-
-    function setupPointerEvents() {
-        const onDown = (e) => {
-            isPointerDown = true;
-            trailPoints = []; // 新しいタッチで軌跡クリア
-            if (audioCtx && isPlaying) {
-                gainNode.gain.setTargetAtTime(0.2, audioCtx.currentTime, 0.02);
-            }
-            handlePointer(e);
-        };
-        const onMove = (e) => {
-            if (!isPointerDown) return;
-            handlePointer(e);
-        };
-        const onUp = () => {
-            isPointerDown = false;
-            if (audioCtx && isPlaying) {
-                gainNode.gain.setTargetAtTime(0.0, audioCtx.currentTime, 0.05);
-            }
-        };
-
-        padCanvas.addEventListener('mousedown', onDown);
-        window.addEventListener('mousemove', onMove);
-        window.addEventListener('mouseup', onUp);
-
-        padCanvas.addEventListener('touchstart', (e) => { onDown(e.touches[0]); e.preventDefault(); });
-        window.addEventListener('touchmove', (e) => { onMove(e.touches[0]); }, { passive: false });
-        window.addEventListener('touchend', onUp);
-    }
-
-    playBtn.addEventListener('click', () => {
-        if (!isPlaying) {
-            if (!audioCtx) {
-                initAudio();
-                setupPointerEvents();
-            }
-            if (audioCtx.state === 'suspended') audioCtx.resume();
-            isPlaying = true;
-            playBtn.textContent = '🔊 音声モーフィング中（パッドをなぞってね）';
-            playBtn.classList.add('playing');
-        } else {
-            audioCtx.suspend();
-            isPlaying = false;
+            await Promise.all(promises);
+            
+            // 準備完了
+            playBtn.disabled = false;
             playBtn.textContent = '🔒 タッチして音声を有効化';
-            playBtn.classList.remove('playing');
+            blendRatioEl.textContent = '準備完了！パッドをタッチしてね';
+            resizeCanvases();
+        } catch (e) {
+            console.error(e);
+            blendRatioEl.textContent = 'WAVファイルの読み込みに失敗しました。パスやファイル名を確認してください。';
         }
-    });
+    }
 
-    // 初期化トリガー
-    setTimeout(resizeCanvases, 150);
-</script>
-</body>
-</html>
+    // 🌟 コアアルゴリズム：自己相関法による1周期の自動検出とリサンプリング
+    function extractOnePeriod(vowelData, sampleRate) {
+        const center = Math.floor(vowelData.length / 2);
+        const searchRange = 1024; // 解析するサンプル幅
+        const signal = vowelData.slice(center, center + searchRange);
+
+        // 自己相関（Autocorrelation）を計算して声の周期（ピッチ）を見つける
+        let r = new Float32Array(searchRange);
+        for (let lag = 0; lag < searchRange; lag++) {
+            let sum = 0;
+            for (let n = 0; n < searchRange - lag; n++) {
+                sum += signal[n] * signal[n + lag];
+            }
+            r[lag] = sum;
+        }
+
+        // 人間の声の現実的な周波数範囲（80Hz〜300Hz）に該当するサンプルラグの範囲
+        const minLag = Math.floor(sampleRate / 300);
+        const maxLag = Math.floor(sampleRate / 80);
+        
+        // その範囲内での自己相関の「最大のピーク」を探す
+        let maxVal = -1;
+        let periodSamples = 200; // デフォルト値のバックアップ
+        for (let i = minLag; i <= maxLag; i++) {
+            if (r[i] > maxVal && r[i] > r[i-1] && r[i] > r
