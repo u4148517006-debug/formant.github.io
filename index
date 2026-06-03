@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>リアルタイム母音合成装置</title>
+    <style>
+        body { font-family: sans-serif; background: #f0f0f0; padding: 20px; text-align: center; }
+        .container { max-width: 600px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .control-group { margin: 20px 0; text-align: left; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input[type="range"] { width: 100%; }
+        canvas { background: #222; width: 100%; height: 200px; border-radius: 4px; margin-top: 20px; }
+        button { padding: 10px 20px; font-size: 16px; cursor: pointer; background: #007bff; color: white; border: none; border-radius: 4px; }
+        button:active { background: #0056b3; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>母音音声合成オシロスコープ</h1>
+    
+    <button id="playBtn">音声をスタート</button>
+
+    <div class="control-group">
+        <label>第1フォルマント (F1): <span id="f1Val">600</span> Hz</label>
+        <input type="range" id="f1" min="0" max="3000" value="600" step="10">
+    </div>
+
+    <div class="control-group">
+        <label>第2フォルマント (F2): <span id="f2Val">1400</span> Hz</label>
+        <input type="range" id="f2" min="0" max="3000" value="1400" step="10">
+    </div>
+
+    <canvas id="osciloscope"></canvas>
+</div>
+
+<script>
+    let audioCtx = null;
+    let oscillator = null;
+    let f1Filter = null;
+    let f2Filter = null;
+    let analyser = null;
+    let isPlaying = false;
+
+    const playBtn = document.getElementById('playBtn');
+    const f1Slider = document.getElementById('f1');
+    const f2Slider = document.getElementById('f2');
+    const f1Val = document.getElementById('f1Val');
+    const f2Val = document.getElementById('f2Val');
+    const canvas = document.getElementById('osciloscope');
+    const canvasCtx = canvas.getContext('2d');
+
+    // Canvasの解像度設定
+    canvas.width = canvas.clientWidth;
+    canvas.height = canvas.clientHeight;
+
+    function initAudio() {
+        // 1. AudioContextの生成
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+        // 2. 音源（声帯の代わり：ノコギリ波）
+        oscillator = audioCtx.createOscillator();
+        oscillator.type = 'sawtooth';
+        oscillator.frequency.value = 130; // 男声〜低めの女声くらいの基本周波数
+
+        // 3. フィルター（声道・フォルマントの代わり）
+        // 第1フォルマント
+        f1Filter = audioCtx.createBiquadFilter();
+        f1Filter.type = 'peaking';
+        f1Filter.Q.value = 8; // フィルターの鋭さ。高いほどクセが強くなる
+        f1Filter.gain.value = 20; // フォルマントの強調具合
+
+        // 第2フォルマント
+        f2Filter = audioCtx.createBiquadFilter();
+        f2Filter.type = 'peaking';
+        f2Filter.Q.value = 8;
+        f2Filter.gain.value = 20;
+
+        // 4. 音量調整用
+        const gainNode = audioCtx.createGain();
+        gainNode.gain.value = 0.3; // 爆音防止
+
+        // 5. アナライザー（オシロスコープ用）
+        analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 2048;
+
+        // 6. 接続
+        // 接続順: 音源 -> F1フィルタ -> F2フィルタ -> 音量 -> アナライザー -> スピーカー
+        oscillator.connect(f1Filter);
+        f1Filter.connect(f2Filter);
+        f2Filter.connect(gainNode);
+        gainNode.connect(analyser);
+        analyser.connect(audioCtx.destination);
+
+        // スライダーの値で初期化
+        updateFilters();
+
+        // 再生開始
+        oscillator.start();
+        drawOscilloscope();
+    }
+
+    function updateFilters() {
+        if (!audioCtx) return;
+        const now = audioCtx.currentTime;
+        
+        // スライダーの値をフィルターに即時反映（少し滑らかに遷移させる）
+        f1Filter.frequency.setTargetAtTime(parseFloat(f1Slider.value), now, 0.05);
+        f2Filter.frequency.setTargetAtTime(parseFloat(f2Slider.value), now, 0.05);
+
+        f1Val.textContent = f1Slider.value;
+        f2Val.textContent = f2Slider.value;
+    }
+
+    // イベントリスナー
+    f1Slider.addEventListener('input', updateFilters);
+    f2Slider.addEventListener('input', updateFilters);
+
+    playBtn.addEventListener('click', () => {
+        // ブラウザのセキュリティ制限のため、ユーザーのアクションでAudioContextを起動
+        if (!isPlaying) {
+            if (!audioCtx) {
+                initAudio();
+            } else if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+            playBtn.textContent = '音声を一時停止';
+            isPlaying = true;
+        } else {
+            audioCtx.suspend();
+            playBtn.textContent = '音声をスタート';
+            isPlaying = false;
+        }
+    });
+
+    // オシロスコープ描画処理
+    function drawOscilloscope() {
+        requestAnimationFrame(drawOscilloscope);
+
+        if (!analyser) return;
+
+        const bufferLength = analyser.frequencyBinCount;
+        const dataArray = new Uint8Array(bufferLength);
+        
+        // タイムドメイン（波形）データを取得
+        analyser.getByteTimeDomainData(dataArray);
+
+        // 画面クリア
+        canvasCtx.fillStyle = '#222';
+        canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // 線のスタイル
+        canvasCtx.lineWidth = 2;
+        canvasCtx.strokeStyle = '#00ffcc';
+        canvasCtx.beginPath();
+
+        const sliceWidth = canvas.width * 1.0 / bufferLength;
+        let x = 0;
+
+        for (let i = 0; i < bufferLength; i++) {
+            const v = dataArray[i] / 128.0; // 0.0 ~ 2.0
+            const y = v * canvas.height / 2;
+
+            if (i === 0) {
+                canvasCtx.moveTo(x, y);
+            } else {
+                canvasCtx.lineTo(x, y);
+            }
+
+            x += sliceWidth;
+        }
+
+        canvasCtx.lineTo(canvas.width, canvas.height / 2);
+        canvasCtx.stroke();
+    }
+</script>
+</body>
+</html>
