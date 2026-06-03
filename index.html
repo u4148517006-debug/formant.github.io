@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>時間軸モーフィング・母音合成装置</title>
+    <title>時間軸モーフィング・母音合成装置（カスタムレイアウト）</title>
     <style>
         body { font-family: sans-serif; background: #eef2f3; padding: 15px; text-align: center; margin: 0; }
         .container { max-width: 600px; margin: 0 auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
@@ -31,7 +31,7 @@
 
 <div class="container">
     <h1>1周期波形モーフィング・タッチシンセ</h1>
-    <div class="sub">WAVから1周期を自動抽出して合成します</div>
+    <div class="sub">アップロード画像をベースにした円状レイアウト</div>
     
     <button id="playBtn" disabled>⏳ WAVファイルを読み込み中...</button>
 
@@ -40,7 +40,7 @@
     </div>
 
     <div class="status-bar">
-        <span id="blendRatio">WAVの解析をお待ちください...</span>
+        <span id="blendRatio">WAVの解析をおお待ちください...</span>
     </div>
 
     <canvas id="oscilloscope"></canvas>
@@ -56,7 +56,7 @@
 
 <script>
     let audioCtx = null;
-    let oscillator = null; // 今回は渡されたカスタム1周期波形をループ再生する役割
+    let oscillator = null;
     let gainNode = null;
     let analyser = null;
     let isPlaying = false;
@@ -64,13 +64,14 @@
     let trailPoints = [];
     const MAX_TRAIL_LENGTH = 20;
 
-    // 母音の設定（WAVファイル名とマッピング）
+    // 🌟 アップロード画像の並びをそのまま再現（真円ベース、EとUは少し小さく）
+    // 各色のベースは以前のカラーを引き継いでいます
     const vowels = [
-        { label: 'A', x: 0.60, y: 0.72, file: 'a.wav', rawPeriod: null, color: 'rgba(255, 0, 0, 0.15)', border: '#ff0000', canvasId: 'chartA' },
-        { label: 'I', x: 0.07, y: 0.28, file: 'i.wav', rawPeriod: null, color: 'rgba(0, 200, 0, 0.15)', border: '#00cc00', canvasId: 'chartI' },
-        { label: 'U', x: 0.12, y: 0.72, file: 'u.wav', rawPeriod: null, color: 'rgba(0, 0, 255, 0.15)', border: '#0000ff', canvasId: 'chartU' },
-        { label: 'E', x: 0.25, y: 0.36, file: 'e.wav', rawPeriod: null, color: 'rgba(255, 230, 0, 0.25)', border: '#d4af37', canvasId: 'chartE' },
-        { label: 'O', x: 0.25, y: 0.92, file: 'o.wav', rawPeriod: null, color: 'rgba(255, 0, 255, 0.15)', border: '#ff00ff', canvasId: 'chartO' }
+        { label: 'A', x: 0.30, y: 0.33, r: 0.14, file: 'a.wav', rawPeriod: null, color: 'rgba(255, 0, 0, 0.15)', border: '#ff0000', canvasId: 'chartA' }, // 左上：大
+        { label: 'I', x: 0.52, y: 0.32, r: 0.12, file: 'i.wav', rawPeriod: null, color: 'rgba(0, 200, 0, 0.15)', border: '#00cc00', canvasId: 'chartI' }, // 右上：中
+        { label: 'U', x: 0.26, y: 0.60, r: 0.11, file: 'u.wav', rawPeriod: null, color: 'rgba(0, 0, 255, 0.15)', border: '#0000ff', canvasId: 'chartU' }, // 左下：小（指定）
+        { label: 'E', x: 0.59, y: 0.56, r: 0.13, file: 'e.wav', rawPeriod: null, color: 'rgba(255, 230, 0, 0.25)', border: '#d4af37', canvasId: 'chartE' }, // 右下：中大（指定により少し小気味に）
+        { label: 'O', x: 0.43, y: 0.76, r: 0.14, file: 'o.wav', rawPeriod: null, color: 'rgba(255, 0, 255, 0.15)', border: '#ff00ff', canvasId: 'chartO' }  // 真下：大
     ];
 
     let currentX = 0.5;
@@ -84,30 +85,20 @@
     const oscCtx = oscCanvas.getContext('2d');
     const blendRatioEl = document.getElementById('blendRatio');
 
-    // 固定サイズで1周期波形をリサンプリングするためのバッファサイズ
     const PERIOD_SIZE = 512; 
 
-    // 起動時にすべてのWAVを並列で読み込んで解析
     async function loadAndAnalyzeWAVs() {
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        
         try {
             const promises = vowels.map(async (v) => {
                 const response = await fetch(v.file);
                 const arrayBuffer = await response.arrayBuffer();
                 const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
-                const channelData = audioBuffer.getChannelData(0); // モノラルとして1ch目を取得
-                
-                // 🌟 WAVの時間波形から自動で「1周期分」を検出して抽出
+                const channelData = audioBuffer.getChannelData(0);
                 v.rawPeriod = extractOnePeriod(channelData, audioBuffer.sampleRate);
-                
-                // 下部のミニCanvasに抽出した1周期波形を表示
                 drawStaticWave(v.canvasId, v.rawPeriod, v.border);
             });
-
             await Promise.all(promises);
-            
-            // 準備完了
             playBtn.disabled = false;
             playBtn.textContent = '🔒 タッチして音声を有効化';
             blendRatioEl.textContent = '準備完了！パッドをタッチしてね';
@@ -118,13 +109,11 @@
         }
     }
 
-    // 🌟 コアアルゴリズム：自己相関法による1周期の自動検出とリサンプリング
     function extractOnePeriod(vowelData, sampleRate) {
         const center = Math.floor(vowelData.length / 2);
-        const searchRange = 1024; // 解析するサンプル幅
+        const searchRange = 1024;
         const signal = vowelData.slice(center, center + searchRange);
 
-        // 自己相関（Autocorrelation）を計算して声の周期（ピッチ）を見つける
         let r = new Float32Array(searchRange);
         for (let lag = 0; lag < searchRange; lag++) {
             let sum = 0;
@@ -134,13 +123,11 @@
             r[lag] = sum;
         }
 
-        // 人間の声の現実的な周波数範囲（80Hz〜300Hz）に該当するサンプルラグの範囲
         const minLag = Math.floor(sampleRate / 300);
         const maxLag = Math.floor(sampleRate / 80);
         
-        // その範囲内での自己相関の「最大のピーク」を探す
         let maxVal = -1;
-        let periodSamples = 200; // デフォルト値のバックアップ
+        let periodSamples = 200;
         for (let i = minLag; i <= maxLag; i++) {
             if (r[i] > maxVal && r[i] > r[i-1] && r[i] > r[i+1]) {
                 maxVal = r[i];
@@ -148,10 +135,8 @@
             }
         }
 
-        // ピークが見つかった位置（＝1周期の長さ）から波形を切り出す
         const rawSegment = signal.slice(0, periodSamples);
 
-        // 5つの波形を綺麗にブレンドするために、すべて一律で「PERIOD_SIZE (512)」の長さに線形補間（伸縮）する
         let resampled = new Float32Array(PERIOD_SIZE);
         for (let i = 0; i < PERIOD_SIZE; i++) {
             const targetIdx = (i / PERIOD_SIZE) * (rawSegment.length - 1);
@@ -160,7 +145,6 @@
             resampled[i] = (1 - frac) * rawSegment[baseIdx] + frac * (rawSegment[baseIdx + 1] || rawSegment[baseIdx]);
         }
 
-        // 平均値（直流成分）を引いてセンターを0に合わせる（ゼロクロス処理）
         let avg = 0;
         for(let i=0; i<PERIOD_SIZE; i++) avg += resampled[i];
         avg /= PERIOD_SIZE;
@@ -169,7 +153,6 @@
         return resampled;
     }
 
-    // --- 下部の5つの静的波形（1周期）描画処理 ---
     function drawStaticWave(canvasId, dataArray, color) {
         const canvas = document.getElementById(canvasId);
         const ctx = canvas.getContext('2d');
@@ -179,7 +162,6 @@
         ctx.fillStyle = '#111';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         
-        // ゼロクロス基準線
         ctx.strokeStyle = '#333';
         ctx.beginPath(); ctx.moveTo(0, canvas.height/2); ctx.lineTo(canvas.width, canvas.height/2); ctx.stroke();
 
@@ -190,7 +172,6 @@
         const sliceWidth = canvas.width / dataArray.length;
         for (let i = 0; i < dataArray.length; i++) {
             const x = i * sliceWidth;
-            // 振幅をCanvasの縦幅に合わせてスケーリング
             const y = canvas.height / 2 - (dataArray[i] * canvas.height * 0.4);
             if (i === 0) ctx.moveTo(x, y);
             else ctx.lineTo(x, y);
@@ -198,10 +179,9 @@
         ctx.stroke();
     }
 
-    // --- 音声生成周りの初期化 ---
     function initAudioGraph() {
         oscillator = audioCtx.createOscillator();
-        oscillator.frequency.value = 130; // ループの再生ピッチ（あーーーーの高さを固定）
+        oscillator.frequency.value = 130;
 
         gainNode = audioCtx.createGain();
         gainNode.gain.value = 0.0;
@@ -218,7 +198,6 @@
         drawOscilloscopeLoop();
     }
 
-    // --- 🌟 コアロジック：時間軸波形のブレンドと再生への反映 ---
     function updateTimeDomainSynthesis() {
         let totalWeight = 0;
         let weights = [];
@@ -241,7 +220,6 @@
         });
         blendRatioEl.textContent = statusTexts.join(" | ");
 
-        // 5つの1周期波形(時間軸)を比率に沿って足し算（ブレンド）する
         let blendedWave = new Float32Array(PERIOD_SIZE);
         for (let i = 0; i < PERIOD_SIZE; i++) {
             let sumSample = 0;
@@ -251,13 +229,10 @@
             blendedWave[i] = sumSample;
         }
 
-        // 🌟 ブレンドされた時間波形をフーリエ変換にかけ、PeriodicWaveに再変換してオシロスコープへ流す
-        // これにより、時間軸でモーフィングされた「1周期波形」を無限に美しくループ再生（あーーー）できます
         if (audioCtx && oscillator) {
             let real = new Float32Array(PERIOD_SIZE / 2 + 1);
             let imag = new Float32Array(PERIOD_SIZE / 2 + 1);
 
-            // 簡易離散フーリエ変換でPeriodicWave用の倍音成分を抽出（位相情報：imag も完全に保持するため音が汚くなりません！）
             for (let k = 0; k < real.length; k++) {
                 let r_sum = 0;
                 let i_sum = 0;
@@ -275,7 +250,6 @@
         }
     }
 
-    // --- UI（タッチパッド）リサイズ・描画 ---
     function resizeCanvases() {
         padCanvas.width = padCanvas.clientWidth;
         padCanvas.height = padCanvas.clientHeight;
@@ -290,34 +264,31 @@
         const h = padCanvas.height;
         padCtx.clearRect(0, 0, w, h);
 
-        // グリッド
-        padCtx.strokeStyle = '#e8e8e8';
-        padCtx.lineWidth = 1;
-        for(let i=1; i<5; i++) {
-            padCtx.beginPath(); padCtx.moveTo(w * (i/5), 0); padCtx.lineTo(w * (i/5), h); padCtx.stroke();
-            padCtx.beginPath(); padCtx.moveTo(0, h * (i/5)); padCtx.lineTo(w, h * (i/5)); taxation = padCtx.stroke();
-        }
-
-        // 5つの母音エリア
+        // 🌟 5つの母音サークル（真円 arc で描画）
         vowels.forEach(v => {
             const cx = v.x * w;
             const cy = v.y * h;
+            // 半径を設定比率（v.r）に基づいて計算
+            const radius = v.r * w;
+
             padCtx.fillStyle = v.color;
             padCtx.strokeStyle = v.border;
             padCtx.lineWidth = 2;
+            
             padCtx.beginPath();
-            padCtx.ellipse(cx, cy, w * 0.12, h * 0.08, v.label === 'O' || v.label === 'I' ? -Math.PI/6 : Math.PI/12, 0, 2 * Math.PI);
+            padCtx.arc(cx, cy, radius, 0, 2 * Math.PI);
             padCtx.fill();
             padCtx.stroke();
 
+            // ラベルテキスト
             padCtx.fillStyle = '#333';
-            padCtx.font = 'bold 15px sans-serif';
+            padCtx.font = 'bold 16px sans-serif';
             padCtx.textAlign = 'center';
             padCtx.textBaseline = 'middle';
             padCtx.fillText(v.label, cx, cy);
         });
 
-        // 軌跡
+        // 軌跡の描画
         if (trailPoints.length > 1) {
             padCtx.lineWidth = 4;
             padCtx.lineCap = 'round';
@@ -344,7 +315,6 @@
         padCtx.stroke();
     }
 
-    // --- オシロスコープ描画ループ ---
     function drawOscilloscopeLoop() {
         requestAnimationFrame(drawOscilloscopeLoop);
         
@@ -381,7 +351,6 @@
         oscCtx.stroke();
     }
 
-    // --- パネル操作イベント ---
     function handlePointer(e) {
         const rect = padCanvas.getBoundingClientRect();
         currentX = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
@@ -410,7 +379,6 @@
         window.addEventListener('touchend', onUp);
     }
 
-    // 再生ボタン
     playBtn.addEventListener('click', () => {
         if (!isPlaying) {
             if (audioCtx.state === 'suspended') audioCtx.resume();
@@ -427,7 +395,6 @@
         }
     });
 
-    // 起動直後にWAVの自動解析を開始
     window.addEventListener('DOMContentLoaded', loadAndAnalyzeWAVs);
 </script>
 </body>
