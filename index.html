@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>人力音声合成・0.7秒ロングワンショットボード</title>
+    <title>人力音声合成・配置最適化ボード</title>
     <style>
         body { 
             font-family: sans-serif; 
@@ -21,13 +21,13 @@
 
         .app-container {
             display: grid;
-            grid-template-columns: 35% 65%; /* 🌟 母音エリアを35%へ拡大 */
+            grid-template-columns: 35% 65%; 
             width: 100%;
             height: 100%;
             box-sizing: border-box;
         }
 
-        /* 左側：母音エリア（35%・上寄せ） */
+        /* 左側：母音エリア */
         .left-panel {
             display: flex;
             flex-direction: column;
@@ -57,7 +57,7 @@
         .pad-container {
             width: 100%;
             aspect-ratio: 1 / 1;
-            max-width: 240px; /* 🌟 35%の横幅に合わせて最大サイズを拡大 */
+            max-width: 240px; 
         }
         #vowelPad {
             background: #22222b;
@@ -68,7 +68,7 @@
             touch-action: none;
         }
 
-        /* 右側：子音ボードエリア（65%・縦0.9倍・上下余白） */
+        /* 右側：子音ボードエリア */
         .right-panel-container {
             display: flex;
             flex-direction: column;
@@ -190,15 +190,15 @@
     let isPlaying = false;
 
     let baseVowelVolume = 0.90; 
-    const VOWEL_DURATION = 0.7; // 🌟 母音の単体発声時間を「0.7秒」へ拡大！
+    const VOWEL_DURATION = 0.7; 
 
-    // 🌟 5つの母音の相対位置（x, y）は変えず、半径比率（r）を約1.2倍〜1.3倍へ大幅拡大！
+    // 🌟 枠内に綺麗に収まりつつ、お互いの距離を外側へ少しだけ「離した」新座標
     const vowels = [
-        { label: 'I', x: 0.28, y: 0.33, r: 0.23, file: 'mother/i.wav', rawBuffer: null, color: 'rgba(0, 200, 0, 0.15)', border: '#00cc00' }, 
-        { label: 'E', x: 0.52, y: 0.32, r: 0.18, file: 'mother/e.wav', rawBuffer: null, color: 'rgba(255, 230, 0, 0.25)', border: '#d4af37' }, 
-        { label: 'A', x: 0.61, y: 0.56, r: 0.22, file: 'mother/a.wav', rawBuffer: null, color: 'rgba(255, 0, 0, 0.15)', border: '#ff0000' }, 
-        { label: 'U', x: 0.24, y: 0.60, r: 0.18, file: 'mother/u.wav', rawBuffer: null, color: 'rgba(0, 0, 255, 0.15)', border: '#0000ff' }, 
-        { label: 'O', x: 0.43, y: 0.77, r: 0.23, file: 'mother/o.wav', rawBuffer: null, color: 'rgba(255, 0, 255, 0.15)', border: '#ff00ff' }  
+        { label: 'I', x: 0.24, y: 0.28, r: 0.23, file: 'mother/i.wav', rawBuffer: null, color: 'rgba(0, 200, 0, 0.15)', border: '#00cc00' }, // 左上へ
+        { label: 'E', x: 0.54, y: 0.25, r: 0.18, file: 'mother/e.wav', rawBuffer: null, color: 'rgba(255, 230, 0, 0.25)', border: '#d4af37' }, // 真上近くへ
+        { label: 'A', x: 0.74, y: 0.54, r: 0.22, file: 'mother/a.wav', rawBuffer: null, color: 'rgba(255, 0, 0, 0.15)', border: '#ff0000' }, // 右側へぐっと寄せる
+        { label: 'U', x: 0.20, y: 0.64, r: 0.18, file: 'mother/u.wav', rawBuffer: null, color: 'rgba(0, 0, 255, 0.15)', border: '#0000ff' }, // 左下へ
+        { label: 'O', x: 0.46, y: 0.78, r: 0.23, file: 'mother/o.wav', rawBuffer: null, color: 'rgba(255, 0, 255, 0.15)', border: '#ff00ff' }  // 真下近くへ
     ];
 
     const consonantBuffers = {
@@ -268,7 +268,6 @@
         }
     }
 
-    // 🌟 母音ワンショット発声（0.7秒固定切り出し）
     function triggerVowelOneShot() {
         if (!audioCtx || !isPlaying) return;
 
@@ -285,12 +284,11 @@
         const normalizedWeights = weights.map(w => w / totalWeight);
 
         const sampleRate = audioCtx.sampleRate;
-        const totalSamples = Math.floor(sampleRate * VOWEL_DURATION); // 🌟 0.7秒分のサンプル数を動的確保
+        const totalSamples = Math.floor(sampleRate * VOWEL_DURATION); 
 
         const oneShotBuffer = audioCtx.createBuffer(1, totalSamples, sampleRate);
         const channelData = oneShotBuffer.getChannelData(0);
 
-        // 5つの母音の冒頭0.7秒分をミキシング
         for (let i = 0; i < totalSamples; i++) {
             let blendedSample = 0;
             for (let j = 0; j < vowels.length; j++) {
@@ -299,7 +297,6 @@
                     blendedSample += vBuf.getChannelData(0)[i] * normalizedWeights[j];
                 }
             }
-            // 末尾30msにフェードアウトを適用してノイズカット
             if (i > totalSamples - Math.floor(sampleRate * 0.03)) {
                 const fadeProgress = (totalSamples - i) / Math.floor(sampleRate * 0.03);
                 blendedSample *= fadeProgress;
@@ -374,7 +371,7 @@
             padCtx.stroke();
 
             padCtx.fillStyle = '#fff';
-            padCtx.font = 'bold 14px sans-serif'; // 🌟 円の拡大に合わせて文字も少しクッキリに
+            padCtx.font = 'bold 14px sans-serif'; 
             padCtx.textAlign = 'center';
             padCtx.textBaseline = 'middle';
             padCtx.fillText(v.label, cx, cy);
