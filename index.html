@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>人力音声合成・子音上寄せ最適化ボード</title>
+    <title>人力音声合成・右手母音トリガーボード</title>
     <style>
         body { 
             font-family: sans-serif; 
@@ -72,11 +72,11 @@
         .right-panel-container {
             display: flex;
             flex-direction: column;
-            justify-content: flex-start; /* 🌟 センター寄せから「上寄せ」に変更し、一番上に密着させます */
+            justify-content: flex-start; 
             height: 100%;
             background: #1e1e24;
             box-sizing: border-box;
-            padding-top: 5px; /* 画面最上部との絶妙な微調整用マージン */
+            padding-top: 5px; 
         }
 
         .right-panel {
@@ -84,7 +84,7 @@
             grid-template-rows: repeat(3, 1fr); 
             gap: 8px;
             padding: 0 12px;
-            height: 80%; /* 縦80%のスマートな引き締めを維持 */
+            height: 80%; 
             box-sizing: border-box;
         }
 
@@ -177,7 +177,7 @@
                 <div class="consonant-btn btn-index playable-key" data-consonant="n"><span class="btn-label">N</span><span class="btn-sub">な・ん</span></div>
                 <div class="consonant-btn btn-middle playable-key" data-consonant="m"><span class="btn-label">M</span><span class="btn-sub">ま行</span></div>
                 <div class="consonant-btn btn-ring playable-key" data-consonant="r"><span class="btn-label">R</span><span class="btn-sub">ら行</span></div>
-                <div class="consonant-btn btn-little playable-key" data-consonant="tsu"><span class="btn-label">っ</span><span class="btn-sub">促音</span></div>
+                <div class="consonant-btn btn-little playable-key" data-consonant="vowel_trigger"><span class="btn-label">V</span><span class="btn-sub">母音トリガ</span></div>
             </div>
         </div>
     </div>
@@ -191,7 +191,7 @@
     let isPlaying = false;
 
     let baseVowelVolume = 0.90; 
-    const VOWEL_DURATION = 0.9; 
+    const VOWEL_DURATION = 0.9; // 🌟 母音の限定発声長さを「0.9秒」へ変更！
 
     const vowels = [
         { label: 'I', x: 0.23, y: 0.25, r: 0.23, file: 'mother/i.wav', rawBuffer: null, color: 'rgba(0, 200, 0, 0.15)', border: '#00cc00', isVowel: true }, 
@@ -269,19 +269,21 @@
         }
     }
 
-    function triggerVowelOneShot() {
-        if (!audioCtx || !isPlaying) return;
-
+    // 🌟 コアロジック：ブレンド母音のワンショット生成・再生（0.9秒クリップ）
+    function generateAndPlayVowelBuffer() {
+        // 1. 各母音のブレンド比率を計算
         const nnTarget = vowels.find(v => v.label === 'NN');
         const dxNN = currentX - nnTarget.x;
         const dyNN = currentY - nnTarget.y;
         const distNN = Math.sqrt(dxNN*dxNN + dyNN*dyNN);
 
+        // もし現在地が「ん」サークルの内側なら混ざり気なしのnn.wavを選択
         if (distNN <= nnTarget.r && nnTarget.rawBuffer) {
             playSingleBufferOneShot(nnTarget.rawBuffer);
             return;
         }
 
+        // 大円エリアの5母音モーフィングブレンド
         const pureVowels = vowels.filter(v => v.isVowel); 
         let totalWeight = 0;
         let weights = [];
@@ -309,6 +311,7 @@
                     blendedSample += vBuf.getChannelData(0)[i] * normalizedWeights[j];
                 }
             }
+            // 末尾30msにフェードアウト
             if (i > totalSamples - Math.floor(sampleRate * 0.03)) {
                 const fadeProgress = (totalSamples - i) / Math.floor(sampleRate * 0.03);
                 blendedSample *= fadeProgress;
@@ -343,15 +346,18 @@
         source.start(0);
     }
 
+    // 各種ボタン判定
     function triggerConsonant(consonantKey) {
         if (!audioCtx || !isPlaying) return;
 
-        if (consonantKey === 'tsu') {
-            vowelGainNode.gain.setValueAtTime(0, audioCtx.currentTime);
-            vowelGainNode.gain.setTargetAtTime(baseVowelVolume, audioCtx.currentTime + 0.12, 0.04);
+        // 🌟 右手小指下段の新しい「V（母音トリガー）」キーが叩かれたときの処理
+        if (consonantKey === 'vowel_trigger') {
+            generateAndPlayVowelBuffer(); // 今の左手の座標の母音を0.9秒一発再生！
+            console.log("右手打鍵による母音トリガー発動 🌟 (0.9秒)");
             return;
         }
 
+        // Nボタン単打時の「ん」発声判定
         if (consonantKey === 'n' && !isVowelTouching) {
             const buffer = consonantBuffers['n']['A']; 
             if (!buffer) return;
@@ -430,7 +436,7 @@
             isVowelTouching = true;
             updateVowelCoords(e);
             drawPad();
-            if (isPlaying) triggerVowelOneShot(); 
+            if (isPlaying) generateAndPlayVowelBuffer(); // 左手タッチ時も今まで通り0.9秒鳴ります
         });
         window.addEventListener('mousemove', (e) => {
             if (isVowelTouching && activeVowelTouchId === null) {
@@ -454,7 +460,7 @@
                 isVowelTouching = true;
                 updateVowelCoords(touch);
                 drawPad();
-                if (isPlaying) triggerVowelOneShot(); 
+                if (isPlaying) generateAndPlayVowelBuffer(); // 左手タッチ時も今まで通り0.9秒鳴ります
             }
         }, { passive: false });
 
@@ -486,7 +492,7 @@
         padCanvas.addEventListener('touchend', handleTouchEnd);
         padCanvas.addEventListener('touchcancel', handleTouchEnd);
 
-        // 子音
+        // 子音＆新母音トリガーボタン
         const buttonTrigger = (el) => {
             const cKey = el.getAttribute('data-consonant');
             if (cKey) triggerConsonant(cKey);
@@ -505,7 +511,7 @@
         if (!isPlaying) {
             if (audioCtx.state === 'suspended') audioCtx.resume();
             isPlaying = true;
-            playBtn.textContent = '🔊 ワンショットサンプラー（0.7秒）稼働中';
+            playBtn.textContent = '🔊 フル機能サンプラー（0.9秒）稼働中';
             playBtn.classList.add('playing');
         } else {
             audioCtx.suspend();
