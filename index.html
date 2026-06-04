@@ -18,20 +18,19 @@
             -webkit-user-select: none;
         }
 
-        /* 全体コンテナ（横型グリッド） */
         .app-container {
             display: grid;
-            grid-template-columns: 30% 70%; /* 母音パッドを30%に拡大 */
+            grid-template-columns: 30% 70%; 
             width: 100%;
             height: 100%;
             box-sizing: border-box;
         }
 
-        /* ================= 左側：母音エリア（30%） ================= */
+        /* 左側：母音エリア（30%・上寄せ） */
         .left-panel {
             display: flex;
             flex-direction: column;
-            justify-content: flex-start; /* 🌟 画面を横にしたときに上側に来るよう「上寄せ」に変更 */
+            justify-content: flex-start; 
             align-items: center;
             padding: 12px 10px;
             box-sizing: border-box;
@@ -54,11 +53,10 @@
         .system-btn.playing { background: #dc3545; }
         .system-btn:disabled { background: #555; cursor: not-allowed; }
 
-        /* 母音タッチパネル */
         .pad-container {
             width: 100%;
             aspect-ratio: 1 / 1;
-            max-width: 210px; /* パッド自体を一回り大きく */
+            max-width: 210px; 
         }
         #vowelPad {
             background: #22222b;
@@ -69,11 +67,11 @@
             touch-action: none;
         }
 
-        /* ================= 右側：子音ボードエリア（70%） ================= */
+        /* 右側：子音ボードエリア（70%・縦0.9倍・上下余白） */
         .right-panel-container {
             display: flex;
             flex-direction: column;
-            justify-content: center; /* 🌟 縦方向0.9倍にして上下に空白（マージン）を持たせる */
+            justify-content: center; 
             height: 100%;
             background: #1e1e24;
             box-sizing: border-box;
@@ -84,7 +82,7 @@
             grid-template-rows: repeat(3, 1fr); 
             gap: 8px;
             padding: 0 12px;
-            height: 90%; /* 🌟 縦方向に0.9倍 */
+            height: 90%; 
             box-sizing: border-box;
         }
 
@@ -146,9 +144,8 @@
 <body>
 
 <div class="app-container">
-    
     <div class="left-panel">
-        <button id="playBtn" class="system-btn">⏳ WAV読み込み中...</button>
+        <button id="playBtn" disabled>⏳ WAV読み込み中...</button>
         <div class="pad-container">
             <canvas id="vowelPad"></canvas>
         </div>
@@ -186,13 +183,13 @@
 <script>
     let audioCtx = null;
     let mainGain = null;
-    let vowelOscillator = null; // 母音のループ常時再生用オシレータ
-    let vowelGainNode = null;   // 母音の音量管理（子音割り込み時に一瞬下げる用）
+    let vowelOscillator = null; 
+    let vowelGainNode = null;   
     let isPlaying = false;
 
     const PERIOD_SIZE = 512; 
+    let baseVowelVolume = 0.35; // 母音ループの基本音量上限
 
-    // 母音データ（🌟 相対位置を保ったまま、各真円の半径比率 r を約1.3倍に拡大！）
     const vowels = [
         { label: 'I', x: 0.28, y: 0.33, r: 0.18, file: 'i.wav', rawPeriod: null, color: 'rgba(0, 200, 0, 0.15)', border: '#00cc00' }, 
         { label: 'E', x: 0.52, y: 0.32, r: 0.14, file: 'e.wav', rawPeriod: null, color: 'rgba(255, 230, 0, 0.25)', border: '#d4af37' }, 
@@ -201,7 +198,6 @@
         { label: 'O', x: 0.43, y: 0.77, r: 0.18, file: 'o.wav', rawPeriod: null, color: 'rgba(255, 0, 255, 0.15)', border: '#ff00ff' }  
     ];
 
-    // 子音WAVバッファ
     const consonantBuffers = {
         's': { 'A': null, 'I': null, 'U': null, 'E': null, 'O': null },
         't': { 'A': null, 'I': null, 'U': null, 'E': null, 'O': null },
@@ -210,34 +206,33 @@
 
     let currentX = 0.5;
     let currentY = 0.5;
-    let isVowelTouching = false;
+    let isVowelTouching = false; // 🌟 これが真のときだけ母音が鳴るスライド式
 
     const playBtn = document.getElementById('playBtn');
     const padCanvas = document.getElementById('vowelPad');
     const padCtx = padCanvas.getContext('2d');
 
-    // 1. すべてのWAV（母音5つ ＋ 子音15音）を一括解析・ロード
     async function loadAndAnalyzeAllWAVs() {
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         mainGain = audioCtx.createGain();
-        mainGain.gain.value = 0.5;
+        mainGain.gain.value = 0.6;
         mainGain.connect(audioCtx.destination);
 
         const loadPromises = [];
 
-        // ① 母音の読み込みと1周期の自動抽出
+        // ① 以前のindex.htmlのa.wavから音を切り出す機能（1周期自動抽出）は完全に生きています
         vowels.forEach(v => {
             loadPromises.push((async () => {
                 try {
                     const res = await fetch(v.file);
-                    const arrayBuf = await res.res.arrayBuffer ? await res.arrayBuffer() : await res.clone().arrayBuffer();
+                    const arrayBuf = await res.arrayBuffer();
                     const audioBuf = await audioCtx.decodeAudioData(arrayBuf);
                     v.rawPeriod = extractOnePeriod(audioBuf.getChannelData(0), audioBuf.sampleRate);
                 } catch(e) { console.error(`母音WAVロード失敗: ${v.file}`); }
             })());
         });
 
-        // ② 子音調音結合WAVのロード
+        // ② 子音WAVのロード
         const vLabels = ['a', 'i', 'u', 'e', 'o'];
         const cKeys = ['s', 't', 'k'];
         cKeys.forEach(c => {
@@ -257,14 +252,13 @@
         try {
             await Promise.all(loadPromises);
             playBtn.disabled = false;
-            playBtn.textContent = '🔒 タッチして有効化';
+            playBtn.textContent = '🔒 タッチしてボード有効化';
             resizePad();
         } catch(e) {
             playBtn.textContent = '⚠️ ロードエラー';
         }
     }
 
-    // 自己相関法による1周期抽出アルゴリズム
     function extractOnePeriod(vowelData, sampleRate) {
         const center = Math.floor(vowelData.length / 2);
         const searchRange = 1024;
@@ -296,24 +290,28 @@
         return resampled;
     }
 
-    // 2. 音声合成グラフの初期化（母音ループ再生の開始）
     function initAudioGraph() {
         vowelOscillator = audioCtx.createOscillator();
-        vowelOscillator.frequency.value = 130; // 固定基本ピッチ
+        vowelOscillator.frequency.value = 130; 
 
         vowelGainNode = audioCtx.createGain();
-        vowelGainNode.gain.value = 0.25; // 常時ループ音量
+        vowelGainNode.gain.value = 0.0; // 🌟 初期状態（触ってないとき）は無音
 
         vowelOscillator.connect(vowelGainNode);
         vowelGainNode.connect(mainGain);
 
         vowelOscillator.start();
-        updateVowelSynthesis();
     }
 
-    // 3. リアルタイムな母音ブレンド処理
+    // 🌟 スライド操作連動型の母音合成ロジック
     function updateVowelSynthesis() {
         if (!audioCtx || !vowelOscillator) return;
+
+        // 🌟 指が触れていないときは即座に音量を0にする
+        if (!isVowelTouching) {
+            vowelGainNode.gain.setTargetAtTime(0.0, audioCtx.currentTime, 0.03);
+            return;
+        }
 
         let totalWeight = 0;
         let weights = [];
@@ -333,12 +331,13 @@
             return ratio;
         });
 
-        // 分散（平方和）ベースの音量動的減衰（さっきの30%~100%補正）
+        // 分散（集中度）による音量補正
         let volFactor = 0.3 + (squareSum - 0.2) * (0.7 / 0.8);
         volFactor = Math.max(0.3, Math.min(1.0, volFactor));
-        vowelGainNode.gain.setTargetAtTime(0.25 * volFactor, audioCtx.currentTime, 0.02);
+        
+        // 🌟 触れている間は音量を滑らかに立ち上げ/維持
+        vowelGainNode.gain.setTargetAtTime(baseVowelVolume * volFactor, audioCtx.currentTime, 0.02);
 
-        // 5つの1周期時間波形をブレンド
         let blendedWave = new Float32Array(PERIOD_SIZE);
         for (let i = 0; i < PERIOD_SIZE; i++) {
             let sumSample = 0;
@@ -348,7 +347,6 @@
             blendedWave[i] = sumSample;
         }
 
-        // PeriodicWaveへの変換（位相維持）
         let real = new Float32Array(PERIOD_SIZE / 2 + 1);
         let imag = new Float32Array(PERIOD_SIZE / 2 + 1);
         for (let k = 0; k < real.length; k++) {
@@ -366,20 +364,19 @@
         vowelOscillator.setPeriodicWave(wave);
     }
 
-    // 4. 🌟 子音ボタンが押されたときの「割り込み再生」処理
     function triggerConsonant(consonantKey) {
         if (!audioCtx || !isPlaying) return;
 
-        // 「っ」の処理（母音を一瞬完全にミュートにする）
         if (consonantKey === 'tsu') {
             vowelGainNode.gain.setValueAtTime(0, audioCtx.currentTime);
-            vowelGainNode.gain.setTargetAtTime(0.25, audioCtx.currentTime + 0.1, 0.02);
+            if (isVowelTouching) {
+                vowelGainNode.gain.setTargetAtTime(baseVowelVolume, audioCtx.currentTime + 0.1, 0.02);
+            }
             return;
         }
 
         if (!consonantBuffers[consonantKey]) return;
 
-        // 今現在一番比率が高い母音（最寄り）を算出
         let totalWeight = 0, maxWeight = -1, targetVowel = 'A';
         vowels.forEach(v => {
             const distance = Math.sqrt(Math.pow(currentX - v.x, 2) + Math.pow(currentY - v.y, 2));
@@ -391,11 +388,12 @@
         const buffer = consonantBuffers[consonantKey][targetVowel];
         if (!buffer) return;
 
-        // 🌟 割り込み演出：子音が鳴る一瞬（0.06秒）だけ持続母音の音量をグッと落とし、子音を引き立たせる
+        // 🌟 割り込み：子音アタック時に母音音量を一瞬落とし、直後に今のタッチ状態に合わせてフェードイン
         vowelGainNode.gain.setValueAtTime(0.02, audioCtx.currentTime); 
-        vowelGainNode.gain.setTargetAtTime(0.25, audioCtx.currentTime + 0.06, 0.03); // 子音の終わりに合わせてフェードイン
+        if (isVowelTouching) {
+            vowelGainNode.gain.setTargetAtTime(baseVowelVolume, audioCtx.currentTime + 0.06, 0.03);
+        }
 
-        // 子音ワンショット再生
         const source = audioCtx.createBufferSource();
         source.buffer = buffer;
         source.connect(mainGain);
@@ -447,16 +445,17 @@
     }
 
     function setupInputEvents() {
+        // 🌟 スライドでのON/OFFとモーフィングを完全連動
         const onVowelDown = (e) => { isVowelTouching = true; handleVowelPointer(e); };
         const onVowelMove = (e) => { if (isVowelTouching) handleVowelPointer(e); };
-        const onVowelUp = () => { isVowelTouching = false; drawPad(); };
+        const onVowelUp = () => { isVowelTouching = false; updateVowelSynthesis(); };
 
         padCanvas.addEventListener('mousedown', onVowelDown);
         window.addEventListener('mousemove', onVowelMove);
         window.addEventListener('mouseup', onVowelUp);
         padCanvas.addEventListener('touchstart', (e) => { onVowelDown(e.touches[0]); e.preventDefault(); });
         window.addEventListener('touchmove', (e) => { onVowelMove(e.touches[0]); }, { passive: false });
-        window.addEventListener('touchend', onVowelUp);
+        window.addEventListener('touchend', onUp => { onVowelUp(); });
 
         const buttonTrigger = (el) => {
             const cKey = el.getAttribute('data-consonant');
