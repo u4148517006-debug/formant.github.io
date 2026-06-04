@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>人力音声合成・20周期ハイブリッドボード</title>
+    <title>人力音声合成・接続最適化ボード</title>
     <style>
         body { 
             font-family: sans-serif; 
@@ -186,13 +186,15 @@
     let mainGain = null;
     let vowelOscillator = null; 
     let vowelGainNode = null;   
-    let lfoNode = null;         // 🌟 対策B用のLFO
-    let lfoGainNode = null;     // 🌟 LFOの深さ調整用
+    let consonantGainNode = null; // 🌟 子音の音量を個別に爆上げするためのゲインノード
+    let lfoNode = null;         
+    let lfoGainNode = null;     
     let isPlaying = false;
 
-    // 🌟 20周期分を綺麗に内包して補間するためのバッファサイズ（512から大きめに変更）
-    const PERIOD_SIZE = 4096; 
+    // 🌟 6周期分に最適化したバッファサイズ（4096から適正サイズの1024に縮小）
+    const PERIOD_SIZE = 1024; 
     let baseVowelVolume = 0.35; 
+    const TARGET_PERIODS = 6; // 🌟 20から6周期へ変更
 
     const vowels = [
         { label: 'I', x: 0.28, y: 0.33, r: 0.18, file: 'mother/i.wav', rawPeriod: null, color: 'rgba(0, 200, 0, 0.15)', border: '#00cc00' }, 
@@ -219,9 +221,15 @@
 
     async function loadAndAnalyzeAllWAVs() {
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        
         mainGain = audioCtx.createGain();
         mainGain.gain.value = 0.6;
         mainGain.connect(audioCtx.destination);
+
+        // 子音専用ゲインを初期化し、メインに接続
+        consonantGainNode = audioCtx.createGain();
+        consonantGainNode.gain.value = 1.8; // 🌟 子音の音量を全体的に大幅増幅（元の約2倍）
+        consonantGainNode.connect(mainGain);
 
         const loadPromises = [];
 
@@ -232,8 +240,8 @@
                     const res = await fetch(v.file);
                     const arrayBuf = await res.arrayBuffer();
                     const audioBuf = await audioCtx.decodeAudioData(arrayBuf);
-                    // 🌟 20周期分を自動抽出するロジックへ
-                    v.rawPeriod = extractMultiPeriods(audioBuf.getChannelData(0), audioBuf.sampleRate, 20);
+                    // 🌟 6周期分を正確に抽出
+                    v.rawPeriod = extractMultiPeriods(audioBuf.getChannelData(0), audioBuf.sampleRate, TARGET_PERIODS);
                 } catch(e) { console.error(`母音WAVロード失敗: ${v.file}`); }
             })());
         });
@@ -265,7 +273,7 @@
         }
     }
 
-    // 🌟 アルゴリズム拡張：自己相関法で1周期を割り出し、それをベースに正確に「20周期分」を切り出す
+    // 6周期抽出用ロジック
     function extractMultiPeriods(vowelData, sampleRate, numPeriods) {
         const center = Math.floor(vowelData.length / 2);
         const searchRange = 1024;
@@ -285,11 +293,9 @@
             if (r[i] > maxVal && r[i] > r[i-1] && r[i] > r[i+1]) { maxVal = r[i]; singlePeriodSamples = i; }
         }
 
-        // 1周期の長さ × 指定個数分（20周期）の長さを確保
         const totalTargetSamples = singlePeriodSamples * numPeriods;
         const rawSegment = vowelData.slice(center, center + totalTargetSamples);
 
-        // 新しいPERIOD_SIZE(4096)へ線形補間（伸縮）して格納
         let resampled = new Float32Array(PERIOD_SIZE);
         for (let i = 0; i < PERIOD_SIZE; i++) {
             const targetIdx = (i / PERIOD_SIZE) * (rawSegment.length - 1);
@@ -298,7 +304,6 @@
             resampled[i] = (1 - frac) * rawSegment[baseIdx] + frac * (rawSegment[baseIdx + 1] || rawSegment[baseIdx]);
         }
 
-        // ゼロクロス処理
         let avg = 0;
         for(let i=0; i<PERIOD_SIZE; i++) avg += resampled[i];
         avg /= PERIOD_SIZE;
@@ -311,19 +316,17 @@
         if (vowelOscillator) return; 
 
         vowelOscillator = audioCtx.createOscillator();
-        vowelOscillator.frequency.value = 130 / 20; // 🌟 20周期分の波形を1つの塊としてループさせるため、再生ベースピッチを1/20に落とします
+        vowelOscillator.frequency.value = 130 / TARGET_PERIODS; // 🌟 6周期分なので1/6の周波数に設定
 
         vowelGainNode = audioCtx.createGain();
         vowelGainNode.gain.value = 0.0; 
 
-        // 🌟 対策B：人工的な超微量ビブラート（LFO）の構築
         lfoNode = audioCtx.createOscillator();
-        lfoNode.frequency.value = 5.5; // 人間の自然なビブラート周波数（1秒間に5.5回）
+        lfoNode.frequency.value = 5.5; 
 
         lfoGainNode = audioCtx.createGain();
-        lfoGainNode.gain.value = 0.08; // 🌟 ごくわずかにピッチを揺らす（隠し味レベル）
+        lfoGainNode.gain.value = 0.05; // 🌟 さらにごくわずかな隠し味に微調整
 
-        // ルーティング: LFO ➡️ LFOゲイン ➡️ オシレーターの周波数パラメータ
         lfoNode.connect(lfoGainNode);
         lfoGainNode.connect(vowelOscillator.frequency);
 
@@ -365,7 +368,6 @@
         
         vowelGainNode.gain.setTargetAtTime(baseVowelVolume * volFactor, audioCtx.currentTime, 0.01);
 
-        // 5つの「20周期ブレンド波形」を合成
         let blendedWave = new Float32Array(PERIOD_SIZE);
         for (let i = 0; i < PERIOD_SIZE; i++) {
             let sumSample = 0;
@@ -398,7 +400,7 @@
         if (consonantKey === 'tsu') {
             vowelGainNode.gain.setValueAtTime(0, audioCtx.currentTime);
             if (isVowelTouching) {
-                vowelGainNode.gain.setTargetAtTime(baseVowelVolume, audioCtx.currentTime + 0.1, 0.02);
+                vowelGainNode.gain.setTargetAtTime(baseVowelVolume, audioCtx.currentTime + 0.12, 0.04);
             }
             return;
         }
@@ -416,14 +418,17 @@
         const buffer = consonantBuffers[consonantKey][targetVowel];
         if (!buffer) return;
 
-        vowelGainNode.gain.setValueAtTime(0.01, audioCtx.currentTime); 
+        // 🌟 接続の滑らか化（クロスフェード調整）
+        // 完全ミュートにせず、母音を「30%程度（0.08）」うっすら残して地続き感を演出
+        vowelGainNode.gain.setValueAtTime(0.08, audioCtx.currentTime); 
         if (isVowelTouching) {
-            vowelGainNode.gain.setTargetAtTime(baseVowelVolume, audioCtx.currentTime + 0.06, 0.02);
+            // 母音が戻るフェードイン時間を「0.06秒」から「0.12秒」に引き延ばし、ヌルッと滑らかに接続
+            vowelGainNode.gain.setTargetAtTime(baseVowelVolume, audioCtx.currentTime + 0.04, 0.04);
         }
 
         const source = audioCtx.createBufferSource();
         source.buffer = buffer;
-        source.connect(mainGain);
+        source.connect(consonantGainNode); // 🌟 個別ブーストノードへ接続
         source.start(0);
     }
 
@@ -551,7 +556,7 @@
             if (audioCtx.state === 'suspended') audioCtx.resume();
             initAudioGraph();
             isPlaying = true;
-            playBtn.textContent = '🔊 ハイブリッドシンセ稼働中';
+            playBtn.textContent = '🔊 モーフィングシンセ稼働中';
             playBtn.classList.add('playing');
         } else {
             audioCtx.suspend();
