@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>人力音声合成・ワンショット発声ボード</title>
+    <title>人力音声合成・0.3秒限定発声ボード</title>
     <style>
         body { 
             font-family: sans-serif; 
@@ -185,22 +185,19 @@
 <script>
     let audioCtx = null;
     let mainGain = null;
-    let vowelGainNode = null;   // 母音の音量管理
+    let vowelGainNode = null;   
     let consonantGainNode = null; 
     let isPlaying = false;
 
-    // 6周期合成用の設定
-    const PERIOD_SIZE = 1024; 
     let baseVowelVolume = 0.90; // 母音の音量（90%）
-    const TARGET_PERIODS = 6; 
+    const VOWEL_DURATION = 0.3; // 🌟 母音の再生時間を「0.3秒」に固定
 
-    // 各母音の定義。rawPeriodに「6周期分の波形バッファ」が直接生成されます
     const vowels = [
-        { label: 'I', x: 0.28, y: 0.33, r: 0.18, file: 'mother/i.wav', rawPeriod: null, color: 'rgba(0, 200, 0, 0.15)', border: '#00cc00' }, 
-        { label: 'E', x: 0.52, y: 0.32, r: 0.14, file: 'mother/e.wav', rawPeriod: null, color: 'rgba(255, 230, 0, 0.25)', border: '#d4af37' }, 
-        { label: 'A', x: 0.61, y: 0.56, r: 0.17, file: 'mother/a.wav', rawPeriod: null, color: 'rgba(255, 0, 0, 0.15)', border: '#ff0000' }, 
-        { label: 'U', x: 0.24, y: 0.60, r: 0.14, file: 'mother/u.wav', rawPeriod: null, color: 'rgba(0, 0, 255, 0.15)', border: '#0000ff' }, 
-        { label: 'O', x: 0.43, y: 0.77, r: 0.18, file: 'mother/o.wav', rawPeriod: null, color: 'rgba(255, 0, 255, 0.15)', border: '#ff00ff' }  
+        { label: 'I', x: 0.28, y: 0.33, r: 0.18, file: 'mother/i.wav', rawBuffer: null, color: 'rgba(0, 200, 0, 0.15)', border: '#00cc00' }, 
+        { label: 'E', x: 0.52, y: 0.32, r: 0.14, file: 'mother/e.wav', rawBuffer: null, color: 'rgba(255, 230, 0, 0.25)', border: '#d4af37' }, 
+        { label: 'A', x: 0.61, y: 0.56, r: 0.17, file: 'mother/a.wav', rawBuffer: null, color: 'rgba(255, 0, 0, 0.15)', border: '#ff0000' }, 
+        { label: 'U', x: 0.24, y: 0.60, r: 0.14, file: 'mother/u.wav', rawBuffer: null, color: 'rgba(0, 0, 255, 0.15)', border: '#0000ff' }, 
+        { label: 'O', x: 0.43, y: 0.77, r: 0.18, file: 'mother/o.wav', rawBuffer: null, color: 'rgba(255, 0, 255, 0.15)', border: '#ff00ff' }  
     ];
 
     const consonantBuffers = {
@@ -208,6 +205,7 @@
         'd': {}, 'g': {}, 'z': {}, 'n': {}, 'm': {}, 'r': {}
     };
 
+    // タッチ状態の管理
     let currentX = 0.5;
     let currentY = 0.5;
     let isVowelTouching = false; 
@@ -224,26 +222,23 @@
         mainGain.gain.value = 0.6;
         mainGain.connect(audioCtx.destination);
 
-        // 母音専用の音量ノード
         vowelGainNode = audioCtx.createGain();
         vowelGainNode.gain.value = baseVowelVolume;
         vowelGainNode.connect(mainGain);
 
-        // 子音専用の音量ノード（1.8倍増幅）
         consonantGainNode = audioCtx.createGain();
         consonantGainNode.gain.value = 1.8; 
         consonantGainNode.connect(mainGain);
 
         const loadPromises = [];
 
-        // ① 母音の読み込み ＋ 6周期分の波形データの抽出
+        // ① 母音をそのままデコードして格納（1周期抽出せず生データを使用）
         vowels.forEach(v => {
             loadPromises.push((async () => {
                 try {
                     const res = await fetch(v.file);
                     const arrayBuf = await res.arrayBuffer();
-                    const audioBuf = await audioCtx.decodeAudioData(arrayBuf);
-                    v.rawPeriod = extractMultiPeriods(audioBuf.getChannelData(0), audioBuf.sampleRate, TARGET_PERIODS);
+                    v.rawBuffer = await audioCtx.decodeAudioData(arrayBuf);
                 } catch(e) { console.error(`母音WAVロード失敗: ${v.file}`); }
             })());
         });
@@ -275,35 +270,11 @@
         }
     }
 
-    // 指定された周期数（6周期）の波形データをそのまま切り出すロジック
-    function extractMultiPeriods(vowelData, sampleRate, numPeriods) {
-        const center = Math.floor(vowelData.length / 2);
-        const searchRange = 1024;
-        const signal = vowelData.slice(center, center + searchRange);
-        
-        let r = new Float32Array(searchRange);
-        for (let lag = 0; lag < searchRange; lag++) {
-            let sum = 0;
-            for (let n = 0; n < searchRange - lag; n++) { sum += signal[n] * signal[n + lag]; }
-            r[lag] = sum;
-        }
-        
-        const minLag = Math.floor(sampleRate / 300);
-        const maxLag = Math.floor(sampleRate / 80);
-        let maxVal = -1, singlePeriodSamples = 200;
-        for (let i = minLag; i <= maxLag; i++) {
-            if (r[i] > maxVal && r[i] > r[i-1] && r[i] > r[i+1]) { maxVal = r[i]; singlePeriodSamples = i; }
-        }
-
-        const totalTargetSamples = singlePeriodSamples * numPeriods;
-        return vowelData.slice(center, center + totalTargetSamples); // 🌟 線形補間せず、生の「6周期分のWAVデータ」として直接保持します
-    }
-
-    // 🌟 【新機能】母音パッドに指が触れた「その瞬間」だけ、ブレンドされた6周期母音を1回だけ再生するロジック
+    // 🌟 【新機能】指が触れた「その一瞬」から、0.3秒間だけブレンド母音を流して自動停止するロジック
     function triggerVowelOneShot() {
         if (!audioCtx || !isPlaying) return;
 
-        // 1. 現在のタッチ座標から各母音のブレンド比率を計算
+        // 1. 各母音のブレンド比率を計算
         let totalWeight = 0;
         let weights = [];
         vowels.forEach(v => {
@@ -314,51 +285,53 @@
             weights.push(weight);
             totalWeight += weight;
         });
-
         const normalizedWeights = weights.map(w => w / totalWeight);
 
-        // 2. 5つの母音の「6周期生波形」を現在の比率でミキシングして、一瞬のカスタムWAVをメモリ上に生成
-        // 5つのWAVのうち最も長いサンプル数を基準にする（基本はほぼ同等）
-        let maxSamples = 0;
-        vowels.forEach(v => { if(v.rawPeriod && v.rawPeriod.length > maxSamples) maxSamples = v.rawPeriod.length; });
-        if (maxSamples === 0) return;
+        // 2. 0.3秒分のサンプル数を計算
+        const sampleRate = audioCtx.sampleRate;
+        const totalSamples = Math.floor(sampleRate * VOWEL_DURATION); // 44100Hzなら約13230サンプル
 
-        // Web Audio APIのカスタム一時バッファを生成
-        const oneShotBuffer = audioCtx.createBuffer(1, maxSamples, audioCtx.sampleRate);
+        // 再生用の一時カスタムバッファを作成
+        const oneShotBuffer = audioCtx.createBuffer(1, totalSamples, sampleRate);
         const channelData = oneShotBuffer.getChannelData(0);
 
-        // 各サンプルのブレンド
-        for (let i = 0; i < maxSamples; i++) {
+        // 3. 5つの母音WAVの「冒頭0.3秒分」を比率に応じて直接ミキシング
+        for (let i = 0; i < totalSamples; i++) {
             let blendedSample = 0;
             for (let j = 0; j < vowels.length; j++) {
-                if (vowels[j].rawPeriod && vowels[j].rawPeriod[i] !== undefined) {
-                    blendedSample += vowels[j].rawPeriod[i] * normalizedWeights[j];
+                const vBuf = vowels[j].rawBuffer;
+                if (vBuf && vBuf.getChannelData(0)[i] !== undefined) {
+                    blendedSample += vBuf.getChannelData(0)[i] * normalizedWeights[j];
                 }
+            }
+            // 🌟 0.3秒の終わりでブツッと切れないよう、最後の0.03秒（30ms）にフェードアウトをかける
+            if (i > totalSamples - Math.floor(sampleRate * 0.03)) {
+                const fadeProgress = (totalSamples - i) / Math.floor(sampleRate * 0.03);
+                blendedSample *= fadeProgress;
             }
             channelData[i] = blendedSample;
         }
 
-        // 3. 生成した6周期分のWAVを一発だけ鳴らす
+        // 4. 再生
         const source = audioCtx.createBufferSource();
         source.buffer = oneShotBuffer;
         source.connect(vowelGainNode);
         source.start(0);
         
-        console.log(`母音ワンショット発声発動 🌟`);
+        console.log(`母音0.3秒ワンショット発声発動 🌟`);
     }
 
-    // 子音ボタンが押されたときの処理
+    // 子音ボタン処理（母音の再生状態にかかわらず、現在の座標から子音を正しく判定して割り込む）
     function triggerConsonant(consonantKey) {
         if (!audioCtx || !isPlaying) return;
 
         if (consonantKey === 'tsu') {
             vowelGainNode.gain.setValueAtTime(0, audioCtx.currentTime);
-            if (isVowelTouching) {
-                vowelGainNode.gain.setTargetAtTime(baseVowelVolume, audioCtx.currentTime + 0.12, 0.04);
-            }
+            vowelGainNode.gain.setTargetAtTime(baseVowelVolume, audioCtx.currentTime + 0.12, 0.04);
             return;
         }
 
+        // Nボタン連打時の「ん」単体発声判定
         if (consonantKey === 'n' && !isVowelTouching) {
             const buffer = consonantBuffers['n']['A']; 
             if (!buffer) return;
@@ -371,6 +344,7 @@
 
         if (!consonantBuffers[consonantKey]) return;
 
+        // 🌟 母音が現在流れていなくても、指が置かれている（または最後に置かれていた）現在の座標から母音を判定！
         let totalWeight = 0, maxWeight = -1, targetVowel = 'A';
         vowels.forEach(v => {
             const distance = Math.sqrt(Math.pow(currentX - v.x, 2) + Math.pow(currentY - v.y, 2));
@@ -386,9 +360,11 @@
         source.buffer = buffer;
         source.connect(consonantGainNode); 
         source.start(0);
+        
+        console.log(`子音割り込み発声: [${consonantKey.toUpperCase()}] ➡️ ターゲット母音判定: [${targetVowel}]`);
     }
 
-    // --- UI制御 ---
+    // --- UI・入力制御 ---
     function resizePad() {
         padCanvas.width = padCanvas.clientWidth;
         padCanvas.height = padCanvas.clientHeight;
@@ -431,18 +407,17 @@
     }
 
     function setupInputEvents() {
-        // --- PC用イベント ---
+        // PC
         padCanvas.addEventListener('mousedown', (e) => {
             isVowelTouching = true;
             updateVowelCoords(e);
             drawPad();
-            if (isPlaying) triggerVowelOneShot(); // 🌟 触れた瞬間に1回だけ鳴らす
+            if (isPlaying) triggerVowelOneShot(); // タッチした瞬間のみ0.3秒流す
         });
         window.addEventListener('mousemove', (e) => {
             if (isVowelTouching && activeVowelTouchId === null) {
                 updateVowelCoords(e);
-                drawPad();
-                // 🌟 スライド中はワンショットを鳴らさず、現在の打鍵位置（座標）の更新のみ行います
+                drawPad(); // 🌟 スライド中は音は追加で流さず、子音用の座標ターゲット追跡のみ行います
             }
         });
         window.addEventListener('mouseup', () => {
@@ -452,7 +427,7 @@
             }
         });
 
-        // --- スマホ用マルチタッチイベント ---
+        // スマホ
         padCanvas.addEventListener('touchstart', (e) => {
             e.preventDefault();
             if (!isVowelTouching) {
@@ -461,7 +436,7 @@
                 isVowelTouching = true;
                 updateVowelCoords(touch);
                 drawPad();
-                if (isPlaying) triggerVowelOneShot(); // 🌟 指が触れた瞬間に1回だけ鳴らす
+                if (isPlaying) triggerVowelOneShot(); // タッチした瞬間のみ0.3秒流す
             }
         }, { passive: false });
 
@@ -493,7 +468,7 @@
         padCanvas.addEventListener('touchend', handleTouchEnd);
         padCanvas.addEventListener('touchcancel', handleTouchEnd);
 
-        // 子音ボタンのイベント
+        // 子音
         const buttonTrigger = (el) => {
             const cKey = el.getAttribute('data-consonant');
             if (cKey) triggerConsonant(cKey);
@@ -512,7 +487,7 @@
         if (!isPlaying) {
             if (audioCtx.state === 'suspended') audioCtx.resume();
             isPlaying = true;
-            playBtn.textContent = '🔊 ワンショットサンプラー稼働中';
+            playBtn.textContent = '🔊 ワンショットサンプラー（0.3秒）稼働中';
             playBtn.classList.add('playing');
         } else {
             audioCtx.suspend();
