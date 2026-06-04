@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>人力音声合成・配置最適化ボード</title>
+    <title>人力音声合成・「ん」サークル搭載ボード</title>
     <style>
         body { 
             font-family: sans-serif; 
@@ -72,7 +72,7 @@
         .right-panel-container {
             display: flex;
             flex-direction: column;
-            justify-content: center; 
+            justify-content: center; /* 🌟 上下の見切れを防ぐため、中央寄せを維持 */
             height: 100%;
             background: #1e1e24;
             box-sizing: border-box;
@@ -83,7 +83,7 @@
             grid-template-rows: repeat(3, 1fr); 
             gap: 8px;
             padding: 0 12px;
-            height: 90%; 
+            height: 80%; /* 🌟 90%から80%へ縦にさらに縮小し、URLバーを完全に回避 */
             box-sizing: border-box;
         }
 
@@ -192,13 +192,15 @@
     let baseVowelVolume = 0.90; 
     const VOWEL_DURATION = 0.7; 
 
-    // 🌟 枠内に綺麗に収まりつつ、お互いの距離を外側へ少しだけ「離した」新座標
+    // 🌟 AIUEOの5つの大円を中心からさらに四方に引き離し、中央に少し小さい「ん（NN）」を新設！
     const vowels = [
-        { label: 'I', x: 0.24, y: 0.28, r: 0.23, file: 'mother/i.wav', rawBuffer: null, color: 'rgba(0, 200, 0, 0.15)', border: '#00cc00' }, // 左上へ
-        { label: 'E', x: 0.54, y: 0.25, r: 0.18, file: 'mother/e.wav', rawBuffer: null, color: 'rgba(255, 230, 0, 0.25)', border: '#d4af37' }, // 真上近くへ
-        { label: 'A', x: 0.74, y: 0.54, r: 0.22, file: 'mother/a.wav', rawBuffer: null, color: 'rgba(255, 0, 0, 0.15)', border: '#ff0000' }, // 右側へぐっと寄せる
-        { label: 'U', x: 0.20, y: 0.64, r: 0.18, file: 'mother/u.wav', rawBuffer: null, color: 'rgba(0, 0, 255, 0.15)', border: '#0000ff' }, // 左下へ
-        { label: 'O', x: 0.46, y: 0.78, r: 0.23, file: 'mother/o.wav', rawBuffer: null, color: 'rgba(255, 0, 255, 0.15)', border: '#ff00ff' }  // 真下近くへ
+        { label: 'I', x: 0.23, y: 0.25, r: 0.23, file: 'mother/i.wav', rawBuffer: null, color: 'rgba(0, 200, 0, 0.15)', border: '#00cc00', isVowel: true }, 
+        { label: 'E', x: 0.55, y: 0.21, r: 0.18, file: 'mother/e.wav', rawBuffer: null, color: 'rgba(255, 230, 0, 0.25)', border: '#d4af37', isVowel: true }, 
+        { label: 'A', x: 0.78, y: 0.54, r: 0.22, file: 'mother/a.wav', rawBuffer: null, color: 'rgba(255, 0, 0, 0.15)', border: '#ff0000', isVowel: true }, 
+        { label: 'U', x: 0.18, y: 0.67, r: 0.18, file: 'mother/u.wav', rawBuffer: null, color: 'rgba(0, 0, 255, 0.15)', border: '#0000ff', isVowel: true }, 
+        { label: 'O', x: 0.46, y: 0.80, r: 0.23, file: 'mother/o.wav', rawBuffer: null, color: 'rgba(255, 0, 255, 0.15)', border: '#ff00ff', isVowel: true },
+        // 🌟 新設：「ん」専用サークル（中央に配置、サイズを少し小さめのr: 0.12に設定）
+        { label: 'NN', x: 0.45, y: 0.50, r: 0.12, file: 'mother/nn.wav', rawBuffer: null, color: 'rgba(255, 255, 255, 0.1)', border: '#ffffff', isVowel: false } 
     ];
 
     const consonantBuffers = {
@@ -232,16 +234,18 @@
 
         const loadPromises = [];
 
+        // 母音＋「ん」WAVの読み込み
         vowels.forEach(v => {
             loadPromises.push((async () => {
                 try {
                     const res = await fetch(v.file);
                     const arrayBuf = await res.arrayBuffer();
                     v.rawBuffer = await audioCtx.decodeAudioData(arrayBuf);
-                } catch(e) { console.error(`母音WAVロード失敗: ${v.file}`); }
+                } catch(e) { console.error(`オーディオロード失敗: ${v.file}`); }
             })());
         });
 
+        // 全12子音の読み込み
         const vLabels = ['a', 'i', 'u', 'e', 'o'];
         const cKeys = Object.keys(consonantBuffers);
         cKeys.forEach(c => {
@@ -268,12 +272,28 @@
         }
     }
 
+    // 🌟 パッドをタップした瞬間のワンショット発声ロジック
     function triggerVowelOneShot() {
         if (!audioCtx || !isPlaying) return;
 
+        // 1. 🌟 タッチした位置が「NN（ん）」サークルの内側かどうかを最優先で数学的に直接判定
+        const nnTarget = vowels.find(v => v.label === 'NN');
+        const dxNN = currentX - nnTarget.x;
+        const dyNN = currentY - nnTarget.y;
+        const distNN = Math.sqrt(dxNN*dxNN + dyNN*dyNN);
+
+        // 「ん」の円を直接タッチした場合は、100%混ざり気なしの純粋な nn.wav を0.7秒流して即終了！
+        if (distNN <= nnTarget.r && nnTarget.rawBuffer) {
+            playSingleBufferOneShot(nnTarget.rawBuffer);
+            console.log(`「ん」サークル直接打鍵：nn.wav を0.7秒発声発動 🌟`);
+            return;
+        }
+
+        // 2. 「ん」以外（大円エリア）を触った場合は、従来通りの5母音モーフィングブレンドを0.7秒生成
+        const pureVowels = vowels.filter(v => v.isVowel); // 子音判定ロジック用と同じく、ブレンドからは「ん」を綺麗に除外
         let totalWeight = 0;
         let weights = [];
-        vowels.forEach(v => {
+        pureVowels.forEach(v => {
             const dx = currentX - v.x;
             const dy = currentY - v.y;
             const distance = Math.sqrt(dx*dx + dy*dy);
@@ -291,8 +311,8 @@
 
         for (let i = 0; i < totalSamples; i++) {
             let blendedSample = 0;
-            for (let j = 0; j < vowels.length; j++) {
-                const vBuf = vowels[j].rawBuffer;
+            for (let j = 0; j < pureVowels.length; j++) {
+                const vBuf = pureVowels[j].rawBuffer;
                 if (vBuf && vBuf.getChannelData(0)[i] !== undefined) {
                     blendedSample += vBuf.getChannelData(0)[i] * normalizedWeights[j];
                 }
@@ -304,12 +324,38 @@
             channelData[i] = blendedSample;
         }
 
+        playSingleBufferOneShot(oneShotBuffer);
+        console.log(`母音モーフィング発声（0.7秒）発動 🌟`);
+    }
+
+    // 指定されたデコード済バッファ（0.7秒分）を一発再生するヘルパー
+    function playSingleBufferOneShot(buffer) {
+        const sampleRate = audioCtx.sampleRate;
+        const totalSamples = Math.floor(sampleRate * VOWEL_DURATION);
+
+        // 0.7秒でしっかり止まるようにバッファの長さをクリップ（NN用）
+        const clipBuffer = audioCtx.createBuffer(1, totalSamples, sampleRate);
+        const outData = clipBuffer.getChannelData(0);
+        const inData = buffer.getChannelData(0);
+
+        for(let i=0; i<totalSamples; i++) {
+            if (inData[i] !== undefined) {
+                let s = inData[i];
+                // 末尾30msにフェードアウト
+                if (i > totalSamples - Math.floor(sampleRate * 0.03)) {
+                    s *= (totalSamples - i) / Math.floor(sampleRate * 0.03);
+                }
+                outData[i] = s;
+            }
+        }
+
         const source = audioCtx.createBufferSource();
-        source.buffer = oneShotBuffer;
+        source.buffer = clipBuffer;
         source.connect(vowelGainNode);
         source.start(0);
     }
 
+    // 右手子音ボタンの処理（🌟 5母音の判定ロジックは一切変更せず100%そのまま維持）
     function triggerConsonant(consonantKey) {
         if (!audioCtx || !isPlaying) return;
 
@@ -331,8 +377,10 @@
 
         if (!consonantBuffers[consonantKey]) return;
 
+        // 🌟 子音のための母音判定は「isVowel: true」の5つの大円のみを対象とし、中央の「ん」は自動で完全に無視されます
+        const pureVowels = vowels.filter(v => v.isVowel);
         let totalWeight = 0, maxWeight = -1, targetVowel = 'A';
-        vowels.forEach(v => {
+        pureVowels.forEach(v => {
             const distance = Math.sqrt(Math.pow(currentX - v.x, 2) + Math.pow(currentY - v.y, 2));
             const weight = distance === 0 ? 999999 : 1 / Math.pow(distance, 2);
             totalWeight += weight;
@@ -364,14 +412,14 @@
             const cx = v.x * w, cy = v.y * h, radius = v.r * w;
             padCtx.fillStyle = v.color;
             padCtx.strokeStyle = v.border;
-            padCtx.lineWidth = 1.5;
+            padCtx.lineWidth = v.isVowel ? 1.5 : 2.5; // 🌟 「ん」は枠線を少し目立たせる
             padCtx.beginPath();
             padCtx.arc(cx, cy, radius, 0, 2 * Math.PI);
             padCtx.fill();
             padCtx.stroke();
 
             padCtx.fillStyle = '#fff';
-            padCtx.font = 'bold 14px sans-serif'; 
+            padCtx.font = v.isVowel ? 'bold 14px sans-serif' : 'bold 11px sans-serif'; 
             padCtx.textAlign = 'center';
             padCtx.textBaseline = 'middle';
             padCtx.fillText(v.label, cx, cy);
@@ -452,7 +500,7 @@
         padCanvas.addEventListener('touchend', handleTouchEnd);
         padCanvas.addEventListener('touchcancel', handleTouchEnd);
 
-        // 子音ボタン
+        // 子音
         const buttonTrigger = (el) => {
             const cKey = el.getAttribute('data-consonant');
             if (cKey) triggerConsonant(cKey);
