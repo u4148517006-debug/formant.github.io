@@ -16,6 +16,7 @@
             height: 100vh;
             user-select: none;
             -webkit-user-select: none;
+            touch-action: none; 
         }
 
         .app-container {
@@ -188,14 +189,15 @@
     let isPlaying = false;
 
     const PERIOD_SIZE = 512; 
-    let baseVowelVolume = 0.35; // 母音ループの基本音量上限
+    let baseVowelVolume = 0.35; 
 
+    // 🌟 母音ファイルのパスを「mother/」フォルダ経由に書き換えました
     const vowels = [
-        { label: 'I', x: 0.28, y: 0.33, r: 0.18, file: 'i.wav', rawPeriod: null, color: 'rgba(0, 200, 0, 0.15)', border: '#00cc00' }, 
-        { label: 'E', x: 0.52, y: 0.32, r: 0.14, file: 'e.wav', rawPeriod: null, color: 'rgba(255, 230, 0, 0.25)', border: '#d4af37' }, 
-        { label: 'A', x: 0.61, y: 0.56, r: 0.17, file: 'a.wav', rawPeriod: null, color: 'rgba(255, 0, 0, 0.15)', border: '#ff0000' }, 
-        { label: 'U', x: 0.24, y: 0.60, r: 0.14, file: 'u.wav', rawPeriod: null, color: 'rgba(0, 0, 255, 0.15)', border: '#0000ff' }, 
-        { label: 'O', x: 0.43, y: 0.77, r: 0.18, file: 'o.wav', rawPeriod: null, color: 'rgba(255, 0, 255, 0.15)', border: '#ff00ff' }  
+        { label: 'I', x: 0.28, y: 0.33, r: 0.18, file: 'mother/i.wav', rawPeriod: null, color: 'rgba(0, 200, 0, 0.15)', border: '#00cc00' }, 
+        { label: 'E', x: 0.52, y: 0.32, r: 0.14, file: 'mother/e.wav', rawPeriod: null, color: 'rgba(255, 230, 0, 0.25)', border: '#d4af37' }, 
+        { label: 'A', x: 0.61, y: 0.56, r: 0.17, file: 'mother/a.wav', rawPeriod: null, color: 'rgba(255, 0, 0, 0.15)', border: '#ff0000' }, 
+        { label: 'U', x: 0.24, y: 0.60, r: 0.14, file: 'mother/u.wav', rawPeriod: null, color: 'rgba(0, 0, 255, 0.15)', border: '#0000ff' }, 
+        { label: 'O', x: 0.43, y: 0.77, r: 0.18, file: 'mother/o.wav', rawPeriod: null, color: 'rgba(255, 0, 255, 0.15)', border: '#ff00ff' }  
     ];
 
     const consonantBuffers = {
@@ -206,7 +208,8 @@
 
     let currentX = 0.5;
     let currentY = 0.5;
-    let isVowelTouching = false; // 🌟 これが真のときだけ母音が鳴るスライド式
+    let isVowelTouching = false; 
+    let activeVowelTouchId = null; 
 
     const playBtn = document.getElementById('playBtn');
     const padCanvas = document.getElementById('vowelPad');
@@ -220,7 +223,7 @@
 
         const loadPromises = [];
 
-        // ① 以前のindex.htmlのa.wavから音を切り出す機能（1周期自動抽出）は完全に生きています
+        // 母音の読み込み
         vowels.forEach(v => {
             loadPromises.push((async () => {
                 try {
@@ -232,7 +235,7 @@
             })());
         });
 
-        // ② 子音WAVのロード
+        // 子音WAVの読み込み
         const vLabels = ['a', 'i', 'u', 'e', 'o'];
         const cKeys = ['s', 't', 'k'];
         cKeys.forEach(c => {
@@ -291,25 +294,23 @@
     }
 
     function initAudioGraph() {
+        if (vowelOscillator) return; 
         vowelOscillator = audioCtx.createOscillator();
         vowelOscillator.frequency.value = 130; 
 
         vowelGainNode = audioCtx.createGain();
-        vowelGainNode.gain.value = 0.0; // 🌟 初期状態（触ってないとき）は無音
+        vowelGainNode.gain.value = 0.0; 
 
         vowelOscillator.connect(vowelGainNode);
         vowelGainNode.connect(mainGain);
-
         vowelOscillator.start();
     }
 
-    // 🌟 スライド操作連動型の母音合成ロジック
     function updateVowelSynthesis() {
         if (!audioCtx || !vowelOscillator) return;
 
-        // 🌟 指が触れていないときは即座に音量を0にする
         if (!isVowelTouching) {
-            vowelGainNode.gain.setTargetAtTime(0.0, audioCtx.currentTime, 0.03);
+            vowelGainNode.gain.setTargetAtTime(0.0, audioCtx.currentTime, 0.015);
             return;
         }
 
@@ -331,12 +332,10 @@
             return ratio;
         });
 
-        // 分散（集中度）による音量補正
         let volFactor = 0.3 + (squareSum - 0.2) * (0.7 / 0.8);
         volFactor = Math.max(0.3, Math.min(1.0, volFactor));
         
-        // 🌟 触れている間は音量を滑らかに立ち上げ/維持
-        vowelGainNode.gain.setTargetAtTime(baseVowelVolume * volFactor, audioCtx.currentTime, 0.02);
+        vowelGainNode.gain.setTargetAtTime(baseVowelVolume * volFactor, audioCtx.currentTime, 0.01);
 
         let blendedWave = new Float32Array(PERIOD_SIZE);
         for (let i = 0; i < PERIOD_SIZE; i++) {
@@ -388,10 +387,9 @@
         const buffer = consonantBuffers[consonantKey][targetVowel];
         if (!buffer) return;
 
-        // 🌟 割り込み：子音アタック時に母音音量を一瞬落とし、直後に今のタッチ状態に合わせてフェードイン
-        vowelGainNode.gain.setValueAtTime(0.02, audioCtx.currentTime); 
+        vowelGainNode.gain.setValueAtTime(0.01, audioCtx.currentTime); 
         if (isVowelTouching) {
-            vowelGainNode.gain.setTargetAtTime(baseVowelVolume, audioCtx.currentTime + 0.06, 0.03);
+            vowelGainNode.gain.setTargetAtTime(baseVowelVolume, audioCtx.currentTime + 0.06, 0.02);
         }
 
         const source = audioCtx.createBufferSource();
@@ -400,7 +398,6 @@
         source.start(0);
     }
 
-    // --- UI制御 ---
     function resizePad() {
         padCanvas.width = padCanvas.clientWidth;
         padCanvas.height = padCanvas.clientHeight;
@@ -436,26 +433,75 @@
         padCtx.fill(); padCtx.stroke();
     }
 
-    function handleVowelPointer(e) {
+    function updateVowelCoords(touchOrEvent) {
         const rect = padCanvas.getBoundingClientRect();
-        currentX = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-        currentY = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
-        drawPad();
-        if (isPlaying) updateVowelSynthesis();
+        currentX = Math.max(0, Math.min(1, (touchOrEvent.clientX - rect.left) / rect.width));
+        currentY = Math.max(0, Math.min(1, (touchOrEvent.clientY - rect.top) / rect.height));
     }
 
     function setupInputEvents() {
-        // 🌟 スライドでのON/OFFとモーフィングを完全連動
-        const onVowelDown = (e) => { isVowelTouching = true; handleVowelPointer(e); };
-        const onVowelMove = (e) => { if (isVowelTouching) handleVowelPointer(e); };
-        const onVowelUp = () => { isVowelTouching = false; updateVowelSynthesis(); };
+        padCanvas.addEventListener('mousedown', (e) => {
+            isVowelTouching = true;
+            updateVowelCoords(e);
+            drawPad();
+            if (isPlaying) updateVowelSynthesis();
+        });
+        window.addEventListener('mousemove', (e) => {
+            if (isVowelTouching && activeVowelTouchId === null) {
+                updateVowelCoords(e);
+                drawPad();
+                if (isPlaying) updateVowelSynthesis();
+            }
+        });
+        window.addEventListener('mouseup', () => {
+            if (activeVowelTouchId === null) {
+                isVowelTouching = false;
+                drawPad();
+                if (isPlaying) updateVowelSynthesis();
+            }
+        });
 
-        padCanvas.addEventListener('mousedown', onVowelDown);
-        window.addEventListener('mousemove', onVowelMove);
-        window.addEventListener('mouseup', onVowelUp);
-        padCanvas.addEventListener('touchstart', (e) => { onVowelDown(e.touches[0]); e.preventDefault(); });
-        window.addEventListener('touchmove', (e) => { onVowelMove(e.touches[0]); }, { passive: false });
-        window.addEventListener('touchend', onUp => { onVowelUp(); });
+        padCanvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            if (!isVowelTouching) {
+                const touch = e.changedTouches[0];
+                activeVowelTouchId = touch.identifier;
+                isVowelTouching = true;
+                updateVowelCoords(touch);
+                drawPad();
+                if (isPlaying) updateVowelSynthesis();
+            }
+        }, { passive: false });
+
+        padCanvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            if (isVowelTouching && activeVowelTouchId !== null) {
+                for (let i = 0; i < e.touches.length; i++) {
+                    if (e.touches[i].identifier === activeVowelTouchId) {
+                        updateVowelCoords(e.touches[i]);
+                        drawPad();
+                        if (isPlaying) updateVowelSynthesis();
+                        break;
+                    }
+                }
+            }
+        }, { passive: false });
+
+        const handleTouchEnd = (e) => {
+            if (isVowelTouching && activeVowelTouchId !== null) {
+                for (let i = 0; i < e.changedTouches.length; i++) {
+                    if (e.changedTouches[i].identifier === activeVowelTouchId) {
+                        isVowelTouching = false;
+                        activeVowelTouchId = null;
+                        drawPad();
+                        if (isPlaying) updateVowelSynthesis();
+                        break;
+                    }
+                }
+            }
+        };
+        padCanvas.addEventListener('touchend', handleTouchEnd);
+        padCanvas.addEventListener('touchcancel', handleTouchEnd);
 
         const buttonTrigger = (el) => {
             const cKey = el.getAttribute('data-consonant');
@@ -464,7 +510,10 @@
 
         document.querySelectorAll('.consonant-btn, .split-sub-btn').forEach(btn => {
             btn.addEventListener('mousedown', (e) => buttonTrigger(e.currentTarget));
-            btn.addEventListener('touchstart', (e) => { buttonTrigger(e.currentTarget); e.preventDefault(); });
+            btn.addEventListener('touchstart', (e) => { 
+                e.preventDefault();
+                buttonTrigger(e.currentTarget); 
+            }, { passive: false });
         });
     }
 
