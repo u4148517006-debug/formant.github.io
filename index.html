@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>人力音声合成・実戦型モーフィングボード</title>
+    <title>人力音声合成・20周期ハイブリッドボード</title>
     <style>
         body { 
             font-family: sans-serif; 
@@ -27,7 +27,7 @@
             box-sizing: border-box;
         }
 
-        /* 左側：母音エリア（30%・上寄せ） */
+        /* 左側：母音エリア */
         .left-panel {
             display: flex;
             flex-direction: column;
@@ -68,7 +68,7 @@
             touch-action: none;
         }
 
-        /* 右側：子音ボードエリア（70%・縦0.9倍・上下余白） */
+        /* 右側：子音ボードエリア */
         .right-panel-container {
             display: flex;
             flex-direction: column;
@@ -186,12 +186,14 @@
     let mainGain = null;
     let vowelOscillator = null; 
     let vowelGainNode = null;   
+    let lfoNode = null;         // 🌟 対策B用のLFO
+    let lfoGainNode = null;     // 🌟 LFOの深さ調整用
     let isPlaying = false;
 
-    const PERIOD_SIZE = 512; 
+    // 🌟 20周期分を綺麗に内包して補間するためのバッファサイズ（512から大きめに変更）
+    const PERIOD_SIZE = 4096; 
     let baseVowelVolume = 0.35; 
 
-    // 🌟 母音ファイルのパスを「mother/」フォルダ経由に書き換えました
     const vowels = [
         { label: 'I', x: 0.28, y: 0.33, r: 0.18, file: 'mother/i.wav', rawPeriod: null, color: 'rgba(0, 200, 0, 0.15)', border: '#00cc00' }, 
         { label: 'E', x: 0.52, y: 0.32, r: 0.14, file: 'mother/e.wav', rawPeriod: null, color: 'rgba(255, 230, 0, 0.25)', border: '#d4af37' }, 
@@ -230,7 +232,8 @@
                     const res = await fetch(v.file);
                     const arrayBuf = await res.arrayBuffer();
                     const audioBuf = await audioCtx.decodeAudioData(arrayBuf);
-                    v.rawPeriod = extractOnePeriod(audioBuf.getChannelData(0), audioBuf.sampleRate);
+                    // 🌟 20周期分を自動抽出するロジックへ
+                    v.rawPeriod = extractMultiPeriods(audioBuf.getChannelData(0), audioBuf.sampleRate, 20);
                 } catch(e) { console.error(`母音WAVロード失敗: ${v.file}`); }
             })());
         });
@@ -262,23 +265,31 @@
         }
     }
 
-    function extractOnePeriod(vowelData, sampleRate) {
+    // 🌟 アルゴリズム拡張：自己相関法で1周期を割り出し、それをベースに正確に「20周期分」を切り出す
+    function extractMultiPeriods(vowelData, sampleRate, numPeriods) {
         const center = Math.floor(vowelData.length / 2);
         const searchRange = 1024;
         const signal = vowelData.slice(center, center + searchRange);
+        
         let r = new Float32Array(searchRange);
         for (let lag = 0; lag < searchRange; lag++) {
             let sum = 0;
             for (let n = 0; n < searchRange - lag; n++) { sum += signal[n] * signal[n + lag]; }
             r[lag] = sum;
         }
+        
         const minLag = Math.floor(sampleRate / 300);
         const maxLag = Math.floor(sampleRate / 80);
-        let maxVal = -1, periodSamples = 200;
+        let maxVal = -1, singlePeriodSamples = 200;
         for (let i = minLag; i <= maxLag; i++) {
-            if (r[i] > maxVal && r[i] > r[i-1] && r[i] > r[i+1]) { maxVal = r[i]; periodSamples = i; }
+            if (r[i] > maxVal && r[i] > r[i-1] && r[i] > r[i+1]) { maxVal = r[i]; singlePeriodSamples = i; }
         }
-        const rawSegment = signal.slice(0, periodSamples);
+
+        // 1周期の長さ × 指定個数分（20周期）の長さを確保
+        const totalTargetSamples = singlePeriodSamples * numPeriods;
+        const rawSegment = vowelData.slice(center, center + totalTargetSamples);
+
+        // 新しいPERIOD_SIZE(4096)へ線形補間（伸縮）して格納
         let resampled = new Float32Array(PERIOD_SIZE);
         for (let i = 0; i < PERIOD_SIZE; i++) {
             const targetIdx = (i / PERIOD_SIZE) * (rawSegment.length - 1);
@@ -286,23 +297,40 @@
             const frac = targetIdx - baseIdx;
             resampled[i] = (1 - frac) * rawSegment[baseIdx] + frac * (rawSegment[baseIdx + 1] || rawSegment[baseIdx]);
         }
+
+        // ゼロクロス処理
         let avg = 0;
         for(let i=0; i<PERIOD_SIZE; i++) avg += resampled[i];
         avg /= PERIOD_SIZE;
         for(let i=0; i<PERIOD_SIZE; i++) resampled[i] -= avg;
+
         return resampled;
     }
 
     function initAudioGraph() {
         if (vowelOscillator) return; 
+
         vowelOscillator = audioCtx.createOscillator();
-        vowelOscillator.frequency.value = 130; 
+        vowelOscillator.frequency.value = 130 / 20; // 🌟 20周期分の波形を1つの塊としてループさせるため、再生ベースピッチを1/20に落とします
 
         vowelGainNode = audioCtx.createGain();
         vowelGainNode.gain.value = 0.0; 
 
+        // 🌟 対策B：人工的な超微量ビブラート（LFO）の構築
+        lfoNode = audioCtx.createOscillator();
+        lfoNode.frequency.value = 5.5; // 人間の自然なビブラート周波数（1秒間に5.5回）
+
+        lfoGainNode = audioCtx.createGain();
+        lfoGainNode.gain.value = 0.08; // 🌟 ごくわずかにピッチを揺らす（隠し味レベル）
+
+        // ルーティング: LFO ➡️ LFOゲイン ➡️ オシレーターの周波数パラメータ
+        lfoNode.connect(lfoGainNode);
+        lfoGainNode.connect(vowelOscillator.frequency);
+
         vowelOscillator.connect(vowelGainNode);
         vowelGainNode.connect(mainGain);
+
+        lfoNode.start();
         vowelOscillator.start();
     }
 
@@ -337,6 +365,7 @@
         
         vowelGainNode.gain.setTargetAtTime(baseVowelVolume * volFactor, audioCtx.currentTime, 0.01);
 
+        // 5つの「20周期ブレンド波形」を合成
         let blendedWave = new Float32Array(PERIOD_SIZE);
         for (let i = 0; i < PERIOD_SIZE; i++) {
             let sumSample = 0;
@@ -522,7 +551,7 @@
             if (audioCtx.state === 'suspended') audioCtx.resume();
             initAudioGraph();
             isPlaying = true;
-            playBtn.textContent = '🔊 モーフィングシンセ稼働中';
+            playBtn.textContent = '🔊 ハイブリッドシンセ稼働中';
             playBtn.classList.add('playing');
         } else {
             audioCtx.suspend();
