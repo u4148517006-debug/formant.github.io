@@ -2,407 +2,396 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>時間軸モーフィング・母音合成装置（音量動的補正版）</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>人力音声合成・横型トレーニングボード</title>
     <style>
-        body { font-family: sans-serif; background: #eef2f3; padding: 15px; text-align: center; margin: 0; }
-        .container { max-width: 600px; margin: 0 auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
-        h1 { font-size: 1.4rem; color: #333; margin-bottom: 5px; }
-        .sub { font-size: 12px; color: #666; margin-bottom: 15px; }
-        
-        .pad-container { position: relative; width: 100%; max-width: 450px; margin: 0 auto; aspect-ratio: 1 / 1; }
-        #vowelPad { background: #fafafa; border: 2px solid #ccc; border-radius: 8px; width: 100%; height: 100%; cursor: crosshair; touch-action: none; }
-        
-        #oscilloscope { background: #111; width: 100%; max-width: 450px; height: 100px; border-radius: 8px; margin-top: 15px; }
-        
-        .status-bar { display: flex; flex-direction: column; gap: 5px; max-width: 450px; margin: 10px auto; font-weight: bold; font-family: monospace; background: #eee; padding: 8px; border-radius: 6px; font-size: 13px; }
-        .ratios { display: flex; justify-content: space-around; }
-        .vol-info { color: #007bff; border-top: 1px solid #ddd; padding-top: 4px; }
-        
-        button { padding: 12px 24px; font-size: 16px; font-weight: bold; cursor: pointer; background: #28a745; color: white; border: none; border-radius: 6px; margin-bottom: 15px; width: 100%; max-width: 450px; }
-        button.playing { background: #dc3545; }
-        button:disabled { background: #ccc; cursor: not-allowed; }
+        /* スマホ横画面に完全最適化 */
+        body { 
+            font-family: sans-serif; 
+            background: #1e1e24; 
+            color: #fff;
+            margin: 0; 
+            padding: 0; 
+            overflow: hidden; 
+            width: 100vw; 
+            height: 100vh;
+            user-select: none;
+            -webkit-user-select: none;
+        }
 
-        .vowel-charts { display: flex; justify-content: space-between; max-width: 450px; margin: 20px auto 0 auto; }
-        .vowel-charts div { text-align: center; width: 18%; }
-        .vowel-charts canvas { background: #222; width: 100%; height: 60px; border-radius: 4px; border: 1px solid #ddd; }
-        .vowel-charts p { margin: 3px 0 0 0; font-weight: bold; font-size: 11px; color: #555; }
+        /* 全体コンテナ（横型グリッド） */
+        .app-container {
+            display: grid;
+            grid-template-columns: 30% 70%; /* 左側30%（母音）、右側70%（子音ボード） */
+            width: 100%;
+            height: 100%;
+            box-sizing: border-box;
+        }
+
+        /* ================= 左側：母音エリア ================= */
+        .left-panel {
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end; /* 左下に寄せる */
+            align-items: center;
+            padding: 10px;
+            box-sizing: border-box;
+            border-right: 2px solid #2a2a35;
+            background: #15151a;
+        }
+
+        .system-btn {
+            width: 90%;
+            padding: 8px;
+            font-size: 11px;
+            font-weight: bold;
+            background: #28a745;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            margin-bottom: auto; /* ボタンは一番上に配置 */
+            cursor: pointer;
+        }
+        .system-btn.playing { background: #dc3545; }
+        .system-btn:disabled { background: #555; cursor: not-allowed; }
+
+        /* 母音タッチパネル（画面の約25%サイズに調整） */
+        .pad-container {
+            width: 100%;
+            aspect-ratio: 1 / 1;
+            max-width: 180px; /* スマホで親指が届きやすいサイズ */
+            margin-bottom: 5px;
+        }
+        #vowelPad {
+            background: #22222b;
+            border: 2px solid #444;
+            border-radius: 12px;
+            width: 100%;
+            height: 100%;
+            touch-action: none;
+        }
+
+        /* ================= 右側：子音ボードエリア ================= */
+        .right-panel {
+            display: grid;
+            grid-template-rows: repeat(3, 1fr); /* 上・中・下の3段 */
+            gap: 8px;
+            padding: 12px;
+            box-sizing: border-box;
+            background: #1e1e24;
+        }
+
+        /* 各段（横一行）のグリッド */
+        .button-row {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr); /* 4本の指に対応する4列 */
+            gap: 8px;
+        }
+
+        /* 子音・特殊音ボタンの基本スタイル */
+        .consonant-btn {
+            background: #2e2e3a;
+            border: 1px solid #444;
+            border-radius: 8px;
+            color: #fff;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            font-weight: bold;
+            cursor: pointer;
+            touch-action: none;
+            transition: background 0.05s;
+        }
+        
+        /* 指ごとのうっすらとした色分け（トレーニングの視認性アップ） */
+        .btn-index { border-bottom: 4px solid #00cc00; } /* 人差し指：緑 */
+        .btn-middle { border-bottom: 4px solid #d4af37; } /* 中指：黄 */
+        .btn-ring { border-bottom: 4px solid #007bff; } /* 薬指：青 */
+        .btn-little { border-bottom: 4px solid #ff00ff; } /* 小指：紫 */
+
+        /* 特殊な分割ボタン（薬指上段のb/p用） */
+        .split-btn-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 4px;
+        }
+        .split-sub-btn {
+            background: #2e2e3a;
+            border: 1px solid #444;
+            border-radius: 6px;
+            color: #fff;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            font-weight: bold;
+            font-size: 14px;
+            border-bottom: 4px solid #ff00ff; /* 小指担当グループ */
+        }
+
+        /* タップされたときの視覚フィードバック */
+        .consonant-btn:active, .split-sub-btn:active {
+            background: #55556b !important;
+            transform: scale(0.98);
+        }
+
+        .btn-label { font-size: 18px; }
+        .btn-sub { font-size: 10px; color: #aaa; margin-top: 2px; }
     </style>
 </head>
 <body>
 
-<div class="container">
-    <h1>1周期波形モーフィング・タッチシンセ</h1>
-    <div class="sub">集中度（分散）による音量自動減衰システム</div>
+<div class="app-container">
     
-    <button id="playBtn" disabled>⏳ WAVファイルを読み込み中...</button>
-
-    <div class="pad-container">
-        <canvas id="vowelPad"></canvas>
+    <!-- 左パネル（母音） -->
+    <div class="left-panel">
+        <button id="playBtn" class="system-btn">⏳ WAV読み込み中...</button>
+        <!-- 左下の母音タッチパネル -->
+        <div class="pad-container">
+            <canvas id="vowelPad"></canvas>
+        </div>
     </div>
 
-    <div class="status-bar">
-        <div class="ratios" id="blendRatio">WAVの解析をお待ちください...</div>
-        <div class="vol-info" id="volRatio">現在の出力音量倍率: --%</div>
-    </div>
+    <!-- 右パネル（子音ボード：NMん / SKTH / ZGDb-p 配列） -->
+    <div class="right-panel">
+        
+        <!-- 上段：人(z) 中(g) 薬(d) 小(b/p) -->
+        <div class="button-row">
+            <div class="consonant-btn btn-index" data-consonant="z"><span class="btn-label">Z</span><span class="btn-sub">ざ行</span></div>
+            <div class="consonant-btn btn-middle" data-consonant="g"><span class="btn-label">G</span><span class="btn-sub">が行</span></div>
+            <div class="consonant-btn btn-ring" data-consonant="d"><span class="btn-label">D</span><span class="btn-sub">だ行</span></div>
+            <!-- 薬指上段エリアを分割してBとPを配置 -->
+            <div class="split-btn-container">
+                <div class="split-sub-btn" data-consonant="b"><span class="btn-label" style="font-size:15px;">B</span><span class="btn-sub" style="font-size:8px;">ば</span></div>
+                <div class="split-sub-btn" data-consonant="p"><span class="btn-label" style="font-size:15px;">P</span><span class="btn-sub" style="font-size:8px;">ぱ</span></div>
+            </div>
+        </div>
 
-    <canvas id="oscilloscope"></canvas>
+        <!-- 中段：人(s) 中(k) 薬(t) 小(h) -->
+        <div class="button-row">
+            <div class="consonant-btn btn-index" data-consonant="s"><span class="btn-label">S</span><span class="btn-sub">さ行</span></div>
+            <div class="consonant-btn btn-middle" data-consonant="k"><span class="btn-label">K</span><span class="btn-sub">か行</span></div>
+            <div class="consonant-btn btn-ring" data-consonant="t"><span class="btn-label">T</span><span class="btn-sub">た行</span></div>
+            <div class="consonant-btn btn-little" data-consonant="h"><span class="btn-label">H</span><span class="btn-sub">は行</span></div>
+        </div>
 
-    <div class="vowel-charts">
-        <div><canvas id="chartA"></canvas><p>ア(A)</p></div>
-        <div><canvas id="chartI"></canvas><p>イ(I)</p></div>
-        <div><canvas id="chartU"></canvas><p>ウ(U)</p></div>
-        <div><canvas id="chartE"></canvas><p>エ(E)</p></div>
-        <div><canvas id="chartO"></canvas><p>オ(O)</p></div>
+        <!-- 下段：人(n/ん) 中(m) 薬(r) 小(っ) -->
+        <div class="button-row">
+            <div class="consonant-btn btn-index" data-consonant="n"><span class="btn-label">N</span><span class="btn-sub">な・ん</span></div>
+            <div class="consonant-btn btn-middle" data-consonant="m"><span class="btn-label">M</span><span class="btn-sub">ま行</span></div>
+            <div class="consonant-btn btn-ring" data-consonant="r"><span class="btn-label">R</span><span class="btn-sub">ら行</span></div>
+            <div class="consonant-btn btn-little" data-consonant="tsu"><span class="btn-label">っ</span><span class="btn-sub">促音</span></div>
+        </div>
+
     </div>
 </div>
 
 <script>
+    // --- 音声システム管理用の変数群 ---
     let audioCtx = null;
-    let oscillator = null;
-    let gainNode = null;
-    let analyser = null;
+    let mainGain = null;
+    let isSystemReady = false;
     let isPlaying = false;
 
-    let trailPoints = [];
-    const MAX_TRAIL_LENGTH = 20;
+    // ロードする全オーディオバッファの保管庫
+    const audioBuffers = {};
 
-    // 前回の修正配置
+    // 母音定義（左から「い」「え」「あ」、下側は「う」「お」のカスタム位置）
     const vowels = [
-        { label: 'I', x: 0.28, y: 0.33, r: 0.14, file: 'i.wav', rawPeriod: null, color: 'rgba(0, 200, 0, 0.15)', border: '#00cc00', canvasId: 'chartI' }, 
-        { label: 'E', x: 0.52, y: 0.32, r: 0.11, file: 'e.wav', rawPeriod: null, color: 'rgba(255, 230, 0, 0.25)', border: '#d4af37', canvasId: 'chartE' }, 
-        { label: 'A', x: 0.61, y: 0.56, r: 0.13, file: 'a.wav', rawPeriod: null, color: 'rgba(255, 0, 0, 0.15)', border: '#ff0000', canvasId: 'chartA' }, 
-        { label: 'U', x: 0.24, y: 0.60, r: 0.11, file: 'u.wav', rawPeriod: null, color: 'rgba(0, 0, 255, 0.15)', border: '#0000ff', canvasId: 'chartU' }, 
-        { label: 'O', x: 0.43, y: 0.77, r: 0.14, file: 'o.wav', rawPeriod: null, color: 'rgba(255, 0, 255, 0.15)', border: '#ff00ff', canvasId: 'chartO' }  
+        { label: 'I', x: 0.28, y: 0.33, r: 0.14, file: 'a.wav' }, // ※便宜上割り当てていますが内部でWAVロード用
+        { label: 'E', x: 0.52, y: 0.32, r: 0.11, file: 'e.wav' }, 
+        { label: 'A', x: 0.61, y: 0.56, r: 0.13, file: 'a.wav' }, 
+        { label: 'U', x: 0.24, y: 0.60, r: 0.11, file: 'u.wav' }, 
+        { label: 'O', x: 0.43, y: 0.77, r: 0.14, file: 'o.wav' }  
     ];
+
+    // ロードが必要な子音WAVリスト（今後調音結合で40音に拡張するベース）
+    const consonantFiles = {
+        'k': 'k.wav', 's': 's.wav', 't': 't.wav', 'n': 'n.wav',
+        'h': 'h.wav', 'm': 'm.wav', 'r': 'r.wav', 'z': 'z.wav',
+        'g': 'g.wav', 'd': 'd.wav', 'b': 'b.wav', 'p': 'p.wav'
+    };
 
     let currentX = 0.5;
     let currentY = 0.5;
-    let isPointerDown = false;
-    let currentTargetVolume = 0.0; // 動的に変わるターゲット音量
+    let isVowelTouching = false;
 
+    // DOM
     const playBtn = document.getElementById('playBtn');
     const padCanvas = document.getElementById('vowelPad');
     const padCtx = padCanvas.getContext('2d');
-    const oscCanvas = document.getElementById('oscilloscope');
-    const oscCtx = oscCanvas.getContext('2d');
-    const blendRatioEl = document.getElementById('blendRatio');
-    const volRatioEl = document.getElementById('volRatio');
 
-    const PERIOD_SIZE = 512; 
-
-    async function loadAndAnalyzeWAVs() {
+    // 1. WAVファイルの一括並列ロード処理
+    async function initAudioAndLoadFiles() {
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        mainGain = audioCtx.createGain();
+        mainGain.gain.value = 0.4;
+        mainGain.connect(audioCtx.destination);
+
         try {
-            const promises = vowels.map(async (v) => {
-                const response = await fetch(v.file);
-                const arrayBuffer = await response.arrayBuffer();
-                const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
-                const channelData = audioBuffer.getChannelData(0);
-                v.rawPeriod = extractOnePeriod(channelData, audioBuffer.sampleRate);
-                drawStaticWave(v.canvasId, v.rawPeriod, v.border);
+            // 子音WAVのロード登録
+            const loadPromises = Object.entries(consonantFiles).map(async ([key, file]) => {
+                const res = await fetch(file);
+                const arrayBuf = await res.arrayBuffer();
+                audioBuffers[key] = await audioCtx.decodeAudioData(arrayBuf);
             });
-            await Promise.all(promises);
+
+            // 母音WAVのロード登録
+            vowels.forEach(v => {
+                // 今回はロード確認のモックとして走らせておきます
+                loadPromises.push((async () => {
+                    try {
+                        const res = await fetch(v.file);
+                        const arrayBuf = await res.arrayBuffer();
+                        audioBuffers[v.label] = await audioCtx.decodeAudioData(arrayBuf);
+                    } catch(e) { console.warn(`${v.file} のロードをスキップします`); }
+                })());
+            });
+
+            await Promise.all(loadPromises);
+
+            // ロード完了処理
+            isSystemReady = true;
             playBtn.disabled = false;
-            playBtn.textContent = '🔒 タッチして音声を有効化';
-            blendRatioEl.textContent = '準備完了！';
-            resizeCanvases();
+            playBtn.textContent = '🔒 タッチしてボード有効化';
+            resizePad();
         } catch (e) {
             console.error(e);
-            blendRatioEl.textContent = 'WAV読み込みエラー';
+            playBtn.textContent = '⚠️ WAV読み込みエラー';
         }
     }
 
-    function extractOnePeriod(vowelData, sampleRate) {
-        const center = Math.floor(vowelData.length / 2);
-        const searchRange = 1024;
-        const signal = vowelData.slice(center, center + searchRange);
+    // 2. 子音ボタンが押されたときのトリガー（ワンショット再生）
+    function triggerConsonant(consonantKey) {
+        if (!audioCtx || !isPlaying) return;
 
-        let r_auto = new Float32Array(searchRange);
-        for (let lag = 0; lag < searchRange; lag++) {
-            let sum = 0;
-            for (let n = 0; n < searchRange - lag; n++) {
-                sum += signal[n] * signal[n + lag];
-            }
-            r_auto[lag] = sum;
+        // 「っ（促音）」の特殊処理（一瞬の間を作る）
+        if (consonantKey === 'tsu') {
+            console.log("促音（っ）の割り込み処理発動");
+            // 今後ここに母音のゲインを一瞬（0.1秒ほど）完全に落とす処理を入れます
+            return;
         }
 
-        const minLag = Math.floor(sampleRate / 300);
-        const maxLag = Math.floor(sampleRate / 80);
-        
-        let maxVal = -1;
-        let periodSamples = 200;
-        for (let i = minLag; i <= maxLag; i++) {
-            if (r_auto[i] > maxVal && r_auto[i] > r_auto[i-1] && r_auto[i] > r_auto[i+1]) {
-                maxVal = r_auto[i];
-                periodSamples = i;
-            }
+        const buffer = audioBuffers[consonantKey];
+        if (!buffer) {
+            console.log(`WAV未ロードまたはトレーニング打鍵: ${consonantKey}.wav`);
+            return;
         }
 
-        const rawSegment = signal.slice(0, periodSamples);
+        // ワンショットWAVの再生ソースを作成
+        const source = audioCtx.createBufferSource();
+        source.buffer = buffer;
+        source.connect(mainGain);
+        source.start(0);
 
-        let resampled = new Float32Array(PERIOD_SIZE);
-        for (let i = 0; i < PERIOD_SIZE; i++) {
-            const targetIdx = (i / PERIOD_SIZE) * (rawSegment.length - 1);
-            const baseIdx = Math.floor(targetIdx);
-            const frac = targetIdx - baseIdx;
-            resampled[i] = (1 - frac) * rawSegment[baseIdx] + frac * (rawSegment[baseIdx + 1] || rawSegment[baseIdx]);
-        }
-
-        let avg = 0;
-        for(let i=0; i<PERIOD_SIZE; i++) avg += resampled[i];
-        avg /= PERIOD_SIZE;
-        for(let i=0; i<PERIOD_SIZE; i++) resampled[i] -= avg;
-
-        return resampled;
+        // 🌟 将来ここに「左手親指の今現在地（母音）」を自動判定し、
+        // 40種類の調音結合WAV（k_a.wav や k_i.wav など）に切り替える選択ロジックを実装します
     }
 
-    function drawStaticWave(canvasId, dataArray, color) {
-        const canvas = document.getElementById(canvasId);
-        const ctx = canvas.getContext('2d');
-        canvas.width = canvas.clientWidth;
-        canvas.height = canvas.clientHeight;
-        ctx.fillStyle = '#111';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.strokeStyle = '#333';
-        ctx.beginPath(); ctx.moveTo(0, canvas.height/2); ctx.lineTo(canvas.width, canvas.height/2); ctx.stroke();
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        const sliceWidth = canvas.width / dataArray.length;
-        for (let i = 0; i < dataArray.length; i++) {
-            const x = i * sliceWidth;
-            const y = canvas.height / 2 - (dataArray[i] * canvas.height * 0.4);
-            if (i === 0) ctx.moveTo(x, y);
-            else ctx.lineTo(x, y);
-        }
-        ctx.stroke();
-    }
-
-    function initAudioGraph() {
-        oscillator = audioCtx.createOscillator();
-        oscillator.frequency.value = 130;
-
-        gainNode = audioCtx.createGain();
-        gainNode.gain.value = 0.0;
-
-        analyser = audioCtx.createAnalyser();
-        analyser.fftSize = 512;
-
-        oscillator.connect(gainNode);
-        gainNode.connect(analyser);
-        analyser.connect(audioCtx.destination);
-
-        oscillator.start();
-        updateTimeDomainSynthesis();
-        drawOscilloscopeLoop();
-    }
-
-    // --- 🌟 コアロジック：ブレンドと音量の動的計算 ---
-    function updateTimeDomainSynthesis() {
-        let totalWeight = 0;
-        let weights = [];
-        const p = 2; 
-
-        vowels.forEach(v => {
-            const dx = currentX - v.x;
-            const dy = currentY - v.y;
-            const distance = Math.sqrt(dx*dx + dy*dy);
-            const weight = distance === 0 ? 999999 : 1 / Math.pow(distance, p);
-            weights.push(weight);
-            totalWeight += weight;
-        });
-
-        let statusTexts = [];
-        let squareSum = 0; // 分散（集中度）を測るための二乗和
-        
-        const normalizedWeights = weights.map((w, idx) => {
-            const ratio = w / totalWeight;
-            statusTexts.push(`${vowels[idx].label}:${Math.round(ratio * 100)}%`);
-            squareSum += ratio * ratio; // 二乗して足す
-            return ratio;
-        });
-        blendRatioEl.textContent = statusTexts.join(" | ");
-
-        // 🌟 音量倍率の計算
-        // 20%*5のとき squareSum=0.2、100%*1のとき squareSum=1.0 になる。
-        // これを 0.2のとき音量30%、1.0のとき音量100% に線形マッピングする数式：
-        // 補正係数 = 0.3 + (squareSum - 0.2) * (0.7 / 0.8)
-        let volFactor = 0.3 + (squareSum - 0.2) * (0.7 / 0.8);
-        volFactor = Math.max(0.3, Math.min(1.0, volFactor)); // 範囲を0.3〜1.0にガード
-
-        volRatioEl.textContent = `現在の出力音量倍率: ${Math.round(volFactor * 100)}%`;
-
-        // タッチされている間だけ、この計算された音量をターゲットにする
-        if (isPointerDown && audioCtx) {
-            // ベース最大音量(0.25)に補正係数をかける
-            currentTargetVolume = 0.25 * volFactor;
-            gainNode.gain.setTargetAtTime(currentTargetVolume, audioCtx.currentTime, 0.04);
-        }
-
-        let blendedWave = new Float32Array(PERIOD_SIZE);
-        for (let i = 0; i < PERIOD_SIZE; i++) {
-            let sumSample = 0;
-            for (let j = 0; j < vowels.length; j++) {
-                sumSample += vowels[j].rawPeriod[i] * normalizedWeights[j];
-            }
-            blendedWave[i] = sumSample;
-        }
-
-        if (audioCtx && oscillator) {
-            let real = new Float32Array(PERIOD_SIZE / 2 + 1);
-            let imag = new Float32Array(PERIOD_SIZE / 2 + 1);
-            for (let k = 0; k < real.length; k++) {
-                let r_sum = 0;
-                let i_sum = 0;
-                for (let n = 0; n < PERIOD_SIZE; n++) {
-                    const angle = (2 * Math.PI * k * n) / PERIOD_SIZE;
-                    r_sum += blendedWave[n] * Math.cos(angle);
-                    i_sum -= blendedWave[n] * Math.sin(angle);
-                }
-                real[k] = r_sum / PERIOD_SIZE;
-                imag[k] = i_sum / PERIOD_SIZE;
-            }
-            const wave = audioCtx.createPeriodicWave(real, imag, {disableNormalization: false});
-            oscillator.setPeriodicWave(wave);
-        }
-    }
-
-    function resizeCanvases() {
+    // --- UI描画・イベント制御（左手母音パッド） ---
+    function resizePad() {
         padCanvas.width = padCanvas.clientWidth;
         padCanvas.height = padCanvas.clientHeight;
-        oscCanvas.width = oscCanvas.clientWidth;
-        oscCanvas.height = oscCanvas.clientHeight;
         drawPad();
     }
-    window.addEventListener('resize', resizeCanvases);
+    window.addEventListener('resize', resizePad);
 
     function drawPad() {
         const w = padCanvas.width;
         const h = padCanvas.height;
         padCtx.clearRect(0, 0, w, h);
 
+        // 5つのサークルを描画（指示通りの真円・配置）
         vowels.forEach(v => {
             const cx = v.x * w;
             const cy = v.y * h;
             const radius = v.r * w;
+
             padCtx.fillStyle = v.color;
             padCtx.strokeStyle = v.border;
-            padCtx.lineWidth = 2;
+            padCtx.lineWidth = 1.5;
+            
             padCtx.beginPath();
             padCtx.arc(cx, cy, radius, 0, 2 * Math.PI);
             padCtx.fill();
             padCtx.stroke();
-            padCtx.fillStyle = '#333';
-            padCtx.font = 'bold 16px sans-serif';
+
+            // ラベル
+            padCtx.fillStyle = '#fff';
+            padCtx.font = 'bold 12px sans-serif';
             padCtx.textAlign = 'center';
             padCtx.textBaseline = 'middle';
             padCtx.fillText(v.label, cx, cy);
         });
 
-        if (trailPoints.length > 1) {
-            padCtx.lineWidth = 4;
-            padCtx.lineCap = 'round';
-            padCtx.lineJoin = 'round';
-            for (let i = 1; i < trailPoints.length; i++) {
-                const alpha = i / trailPoints.length;
-                padCtx.strokeStyle = `rgba(0, 120, 255, ${alpha * 0.6})`;
-                padCtx.beginPath();
-                padCtx.moveTo(trailPoints[i - 1].x * w, trailPoints[i - 1].y * h);
-                padCtx.lineTo(trailPoints[i].x * w, trailPoints[i].y * h);
-                padCtx.stroke();
-            }
-        }
-
+        // 現在位置のポインタ
         const px = currentX * w;
         const py = currentY * h;
-        padCtx.strokeStyle = '#222';
+        padCtx.strokeStyle = '#fff';
         padCtx.lineWidth = 2;
         padCtx.beginPath();
-        padCtx.arc(px, py, 9, 0, 2*Math.PI);
-        padCtx.fillStyle = isPointerDown ? '#007bff' : 'rgba(0,0,0,0.1)';
+        padCtx.arc(px, py, 6, 0, 2 * Math.PI);
+        padCtx.fillStyle = isVowelTouching ? '#007bff' : 'rgba(255,255,255,0.2)';
         padCtx.fill();
         padCtx.stroke();
     }
 
-    function drawOscilloscopeLoop() {
-        requestAnimationFrame(drawOscilloscopeLoop);
-        if (isPointerDown) {
-            trailPoints.push({ x: currentX, y: currentY });
-            if (trailPoints.length > MAX_TRAIL_LENGTH) trailPoints.shift();
-        } else {
-            if (trailPoints.length > 0) trailPoints.shift();
-        }
-        drawPad();
-
-        if (!analyser || !isPlaying) return;
-
-        const bufferLength = analyser.frequencyBinCount;
-        const dataArray = new Uint8Array(bufferLength);
-        analyser.getByteTimeDomainData(dataArray);
-
-        oscCtx.fillStyle = '#111';
-        oscCtx.fillRect(0, 0, oscCanvas.width, oscCanvas.height);
-        oscCtx.lineWidth = 2;
-        oscCtx.strokeStyle = '#00ffcc';
-        oscCtx.beginPath();
-        const sliceWidth = oscCanvas.width / bufferLength;
-        let x = 0;
-        for (let i = 0; i < bufferLength; i++) {
-            const v = dataArray[i] / 128.0;
-            const y = (v * oscCanvas.height) / 2;
-            if (i === 0) oscCtx.moveTo(x, y);
-            else oscCtx.lineTo(x, y);
-            x += sliceWidth;
-        }
-        oscCtx.lineTo(oscCanvas.width, oscCanvas.height / 2);
-        oscCtx.stroke();
-    }
-
-    function handlePointer(e) {
+    function handleVowelPointer(e) {
         const rect = padCanvas.getBoundingClientRect();
         currentX = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
         currentY = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
-        updateTimeDomainSynthesis();
+        drawPad();
+        
+        // 今後、このcurrentX, currentYの時間軸モーフィング合成音が常時ループ再生されます
     }
 
-    function setupPointerEvents() {
-        const onDown = (e) => {
-            isPointerDown = true;
-            trailPoints = [];
-            handlePointer(e);
-        };
-        const onMove = (e) => { if (isPointerDown) handlePointer(e); };
-        const onUp = () => {
-            isPointerDown = false;
-            if (audioCtx && isPlaying) gainNode.gain.setTargetAtTime(0.0, audioCtx.currentTime, 0.04);
+    // --- イベントリスナー設定 ---
+    function setupInputEvents() {
+        // 左手母音パッド（マウス＆タッチ対応）
+        const onVowelDown = (e) => { isVowelTouching = true; handleVowelPointer(e); };
+        const onVowelMove = (e) => { if (isVowelTouching) handleVowelPointer(e); };
+        const onVowelUp = () => { isVowelTouching = false; drawPad(); };
+
+        padCanvas.addEventListener('mousedown', onVowelDown);
+        window.addEventListener('mousemove', onVowelMove);
+        window.addEventListener('mouseup', onVowelUp);
+        padCanvas.addEventListener('touchstart', (e) => { onVowelDown(e.touches[0]); e.preventDefault(); });
+        window.addEventListener('touchmove', (e) => { onVowelMove(e.touches[0]); }, { passive: false });
+        window.addEventListener('touchend', onVowelUp);
+
+        // 右手子音ボタン（マルチタッチに完全対応するため個別にイベント登録）
+        const buttonTrigger = (el) => {
+            const cKey = el.getAttribute('data-consonant');
+            if (cKey) triggerConsonant(cKey);
         };
 
-        padCanvas.addEventListener('mousedown', onDown);
-        window.addEventListener('mousemove', onMove);
-        window.addEventListener('mouseup', onUp);
-        padCanvas.addEventListener('touchstart', (e) => { onDown(e.touches[0]); e.preventDefault(); });
-        window.addEventListener('touchmove', (e) => { onMove(e.touches[0]); }, { passive: false });
-        window.addEventListener('touchend', onUp);
+        document.querySelectorAll('.consonant-btn, .split-sub-btn').forEach(btn => {
+            btn.addEventListener('mousedown', (e) => buttonTrigger(e.currentTarget));
+            btn.addEventListener('touchstart', (e) => { 
+                buttonTrigger(e.currentTarget); 
+                e.preventDefault(); 
+            });
+        });
     }
 
+    // システムアクティベートボタン
     playBtn.addEventListener('click', () => {
         if (!isPlaying) {
             if (audioCtx.state === 'suspended') audioCtx.resume();
-            initAudioGraph();
-            setupPointerEvents();
             isPlaying = true;
-            playBtn.textContent = '🔊 音声モーフィング中（パッドをなぞね）';
+            playBtn.textContent = '🔊 トレーニングボード稼働中';
             playBtn.classList.add('playing');
         } else {
             audioCtx.suspend();
             isPlaying = false;
-            playBtn.textContent = '🔒 タッチして音声を有効化';
+            playBtn.textContent = '🔒 タッチしてボード有効化';
             playBtn.classList.remove('playing');
         }
     });
 
-    window.addEventListener('DOMContentLoaded', loadAndAnalyzeWAVs);
+    // ページロード時にオーディオファイルのロードを開始
+    window.addEventListener('DOMContentLoaded', initAudioAndLoadFiles);
 </script>
 </body>
 </html>
