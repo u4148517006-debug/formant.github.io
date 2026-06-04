@@ -3,9 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>人力音声合成・横型トレーニングボード</title>
+    <title>人力音声合成・横型トレーニングボード（調音結合版）</title>
     <style>
-        /* スマホ横画面に完全最適化 */
         body { 
             font-family: sans-serif; 
             background: #1e1e24; 
@@ -19,10 +18,9 @@
             -webkit-user-select: none;
         }
 
-        /* 全体コンテナ（横型グリッド） */
         .app-container {
             display: grid;
-            grid-template-columns: 30% 70%; /* 左側30%（母音）、右側70%（子音ボード） */
+            grid-template-columns: 30% 70%; 
             width: 100%;
             height: 100%;
             box-sizing: border-box;
@@ -32,7 +30,7 @@
         .left-panel {
             display: flex;
             flex-direction: column;
-            justify-content: flex-end; /* 左下に寄せる */
+            justify-content: flex-end; 
             align-items: center;
             padding: 10px;
             box-sizing: border-box;
@@ -49,17 +47,16 @@
             color: white;
             border: none;
             border-radius: 4px;
-            margin-bottom: auto; /* ボタンは一番上に配置 */
+            margin-bottom: auto; 
             cursor: pointer;
         }
         .system-btn.playing { background: #dc3545; }
         .system-btn:disabled { background: #555; cursor: not-allowed; }
 
-        /* 母音タッチパネル（画面の約25%サイズに調整） */
         .pad-container {
             width: 100%;
             aspect-ratio: 1 / 1;
-            max-width: 180px; /* スマホで親指が届きやすいサイズ */
+            max-width: 180px; 
             margin-bottom: 5px;
         }
         #vowelPad {
@@ -74,21 +71,19 @@
         /* ================= 右側：子音ボードエリア ================= */
         .right-panel {
             display: grid;
-            grid-template-rows: repeat(3, 1fr); /* 上・中・下の3段 */
+            grid-template-rows: repeat(3, 1fr); 
             gap: 8px;
             padding: 12px;
             box-sizing: border-box;
             background: #1e1e24;
         }
 
-        /* 各段（横一行）のグリッド */
         .button-row {
             display: grid;
-            grid-template-columns: repeat(4, 1fr); /* 4本の指に対応する4列 */
+            grid-template-columns: repeat(4, 1fr); 
             gap: 8px;
         }
 
-        /* 子音・特殊音ボタンの基本スタイル */
         .consonant-btn {
             background: #2e2e3a;
             border: 1px solid #444;
@@ -104,13 +99,16 @@
             transition: background 0.05s;
         }
         
-        /* 指ごとのうっすらとした色分け（トレーニングの視認性アップ） */
-        .btn-index { border-bottom: 4px solid #00cc00; } /* 人差し指：緑 */
-        .btn-middle { border-bottom: 4px solid #d4af37; } /* 中指：黄 */
-        .btn-ring { border-bottom: 4px solid #007bff; } /* 薬指：青 */
-        .btn-little { border-bottom: 4px solid #ff00ff; } /* 小指：紫 */
+        /* 音が出る実機能キーにうっすら目印（枠線を少し明るく） */
+        .playable-key {
+            border: 1px solid #00ffcc !important;
+        }
+        
+        .btn-index { border-bottom: 4px solid #00cc00; } 
+        .btn-middle { border-bottom: 4px solid #d4af37; } 
+        .btn-ring { border-bottom: 4px solid #007bff; } 
+        .btn-little { border-bottom: 4px solid #ff00ff; } 
 
-        /* 特殊な分割ボタン（薬指上段のb/p用） */
         .split-btn-container {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -127,10 +125,9 @@
             align-items: center;
             font-weight: bold;
             font-size: 14px;
-            border-bottom: 4px solid #ff00ff; /* 小指担当グループ */
+            border-bottom: 4px solid #ff00ff; 
         }
 
-        /* タップされたときの視覚フィードバック */
         .consonant-btn:active, .split-sub-btn:active {
             background: #55556b !important;
             transform: scale(0.98);
@@ -144,39 +141,35 @@
 
 <div class="app-container">
     
-    <!-- 左パネル（母音） -->
     <div class="left-panel">
         <button id="playBtn" class="system-btn">⏳ WAV読み込み中...</button>
-        <!-- 左下の母音タッチパネル -->
         <div class="pad-container">
             <canvas id="vowelPad"></canvas>
         </div>
     </div>
 
-    <!-- 右パネル（子音ボード：NMん / SKTH / ZGDb-p 配列） -->
     <div class="right-panel">
         
-        <!-- 上段：人(z) 中(g) 薬(d) 小(b/p) -->
+        <!-- 上段：z, g, d, b/p -->
         <div class="button-row">
             <div class="consonant-btn btn-index" data-consonant="z"><span class="btn-label">Z</span><span class="btn-sub">ざ行</span></div>
             <div class="consonant-btn btn-middle" data-consonant="g"><span class="btn-label">G</span><span class="btn-sub">が行</span></div>
             <div class="consonant-btn btn-ring" data-consonant="d"><span class="btn-label">D</span><span class="btn-sub">だ行</span></div>
-            <!-- 薬指上段エリアを分割してBとPを配置 -->
             <div class="split-btn-container">
                 <div class="split-sub-btn" data-consonant="b"><span class="btn-label" style="font-size:15px;">B</span><span class="btn-sub" style="font-size:8px;">ば</span></div>
                 <div class="split-sub-btn" data-consonant="p"><span class="btn-label" style="font-size:15px;">P</span><span class="btn-sub" style="font-size:8px;">ぱ</span></div>
             </div>
         </div>
 
-        <!-- 中段：人(s) 中(k) 薬(t) 小(h) -->
+        <!-- 中段：s, k, t, h (s, k, tのみ実音連動) -->
         <div class="button-row">
-            <div class="consonant-btn btn-index" data-consonant="s"><span class="btn-label">S</span><span class="btn-sub">さ行</span></div>
-            <div class="consonant-btn btn-middle" data-consonant="k"><span class="btn-label">K</span><span class="btn-sub">か行</span></div>
-            <div class="consonant-btn btn-ring" data-consonant="t"><span class="btn-label">T</span><span class="btn-sub">た行</span></div>
+            <div class="consonant-btn btn-index playable-key" data-consonant="s"><span class="btn-label">S</span><span class="btn-sub">さ行</span></div>
+            <div class="consonant-btn btn-middle playable-key" data-consonant="k"><span class="btn-label">K</span><span class="btn-sub">か行</span></div>
+            <div class="consonant-btn btn-ring playable-key" data-consonant="t"><span class="btn-label">T</span><span class="btn-sub">た行</span></div>
             <div class="consonant-btn btn-little" data-consonant="h"><span class="btn-label">H</span><span class="btn-sub">は行</span></div>
         </div>
 
-        <!-- 下段：人(n/ん) 中(m) 薬(r) 小(っ) -->
+        <!-- 下段：n, m, r, っ -->
         <div class="button-row">
             <div class="consonant-btn btn-index" data-consonant="n"><span class="btn-label">N</span><span class="btn-sub">な・ん</span></div>
             <div class="consonant-btn btn-middle" data-consonant="m"><span class="btn-label">M</span><span class="btn-sub">ま行</span></div>
@@ -188,108 +181,123 @@
 </div>
 
 <script>
-    // --- 音声システム管理用の変数群 ---
     let audioCtx = null;
     let mainGain = null;
-    let isSystemReady = false;
     let isPlaying = false;
 
-    // ロードする全オーディオバッファの保管庫
-    const audioBuffers = {};
-
-    // 母音定義（左から「い」「え」「あ」、下側は「う」「お」のカスタム位置）
-    const vowels = [
-        { label: 'I', x: 0.28, y: 0.33, r: 0.14, file: 'a.wav' }, // ※便宜上割り当てていますが内部でWAVロード用
-        { label: 'E', x: 0.52, y: 0.32, r: 0.11, file: 'e.wav' }, 
-        { label: 'A', x: 0.61, y: 0.56, r: 0.13, file: 'a.wav' }, 
-        { label: 'U', x: 0.24, y: 0.60, r: 0.11, file: 'u.wav' }, 
-        { label: 'O', x: 0.43, y: 0.77, r: 0.14, file: 'o.wav' }  
-    ];
-
-    // ロードが必要な子音WAVリスト（今後調音結合で40音に拡張するベース）
-    const consonantFiles = {
-        'k': 'k.wav', 's': 's.wav', 't': 't.wav', 'n': 'n.wav',
-        'h': 'h.wav', 'm': 'm.wav', 'r': 'r.wav', 'z': 'z.wav',
-        'g': 'g.wav', 'd': 'd.wav', 'b': 'b.wav', 'p': 'p.wav'
+    // 15個の調音結合WAVを格納するバッファ
+    const audioBuffers = {
+        's': { 'A': null, 'I': null, 'U': null, 'E': null, 'O': null },
+        't': { 'A': null, 'I': null, 'U': null, 'E': null, 'O': null },
+        'k': { 'A': null, 'I': null, 'U': null, 'E': null, 'O': null }
     };
+
+    // 母音の配置データ
+    const vowels = [
+        { label: 'I', x: 0.28, y: 0.33, r: 0.14, color: 'rgba(0, 200, 0, 0.15)', border: '#00cc00' }, 
+        { label: 'E', x: 0.52, y: 0.32, r: 0.11, color: 'rgba(255, 230, 0, 0.25)', border: '#d4af37' }, 
+        { label: 'A', x: 0.61, y: 0.56, r: 0.13, color: 'rgba(255, 0, 0, 0.15)', border: '#ff0000' }, 
+        { label: 'U', x: 0.24, y: 0.60, r: 0.11, color: 'rgba(0, 0, 255, 0.15)', border: '#0000ff' }, 
+        { label: 'O', x: 0.43, y: 0.77, r: 0.14, color: 'rgba(255, 0, 255, 0.15)', border: '#ff00ff' }  
+    ];
 
     let currentX = 0.5;
     let currentY = 0.5;
     let isVowelTouching = false;
 
-    // DOM
     const playBtn = document.getElementById('playBtn');
     const padCanvas = document.getElementById('vowelPad');
     const padCtx = padCanvas.getContext('2d');
 
-    // 1. WAVファイルの一括並列ロード処理
+    // 🌟 指定された3つのフォルダ（s, t, k）から15個のファイルを並列ロード
     async function initAudioAndLoadFiles() {
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         mainGain = audioCtx.createGain();
-        mainGain.gain.value = 0.4;
+        mainGain.gain.value = 0.6; // 音量
         mainGain.connect(audioCtx.destination);
 
-        try {
-            // 子音WAVのロード登録
-            const loadPromises = Object.entries(consonantFiles).map(async ([key, file]) => {
-                const res = await fetch(file);
-                const arrayBuf = await res.arrayBuffer();
-                audioBuffers[key] = await audioCtx.decodeAudioData(arrayBuf);
-            });
+        const vLabels = ['a', 'i', 'u', 'e', 'o'];
+        const targets = ['s', 't', 'k'];
+        const loadPromises = [];
 
-            // 母音WAVのロード登録
-            vowels.forEach(v => {
-                // 今回はロード確認のモックとして走らせておきます
+        targets.forEach(c => {
+            vLabels.forEach(v => {
+                const filePath = `${c}/${c}${v}.wav`; // 例: s/sa.wav
+                const upperV = v.toUpperCase();       // 'A', 'I'...
+                
                 loadPromises.push((async () => {
                     try {
-                        const res = await fetch(v.file);
+                        const res = await fetch(filePath);
+                        if (!res.ok) throw new Error();
                         const arrayBuf = await res.arrayBuffer();
-                        audioBuffers[v.label] = await audioCtx.decodeAudioData(arrayBuf);
-                    } catch(e) { console.warn(`${v.file} のロードをスキップします`); }
+                        audioBuffers[c][upperV] = await audioCtx.decodeAudioData(arrayBuf);
+                    } catch(e) {
+                        console.error(`ファイルの読み込みに失敗しました: ${filePath}`);
+                    }
                 })());
             });
+        });
 
+        try {
             await Promise.all(loadPromises);
-
-            // ロード完了処理
-            isSystemReady = true;
             playBtn.disabled = false;
             playBtn.textContent = '🔒 タッチしてボード有効化';
             resizePad();
         } catch (e) {
-            console.error(e);
             playBtn.textContent = '⚠️ WAV読み込みエラー';
         }
     }
 
-    // 2. 子音ボタンが押されたときのトリガー（ワンショット再生）
+    // 🌟 コアロジック：今一番高いパーセントの母音を割り出し、対応するWAVを再生
     function triggerConsonant(consonantKey) {
         if (!audioCtx || !isPlaying) return;
 
-        // 「っ（促音）」の特殊処理（一瞬の間を作る）
-        if (consonantKey === 'tsu') {
-            console.log("促音（っ）の割り込み処理発動");
-            // 今後ここに母音のゲインを一瞬（0.1秒ほど）完全に落とす処理を入れます
+        // s, k, t 以外はトレーニング用のモック（ログ出しのみ）
+        if (!audioBuffers[consonantKey]) {
+            console.log(`トレーニング打鍵 (音なし): ${consonantKey}`);
             return;
         }
 
-        const buffer = audioBuffers[consonantKey];
-        if (!buffer) {
-            console.log(`WAV未ロードまたはトレーニング打鍵: ${consonantKey}.wav`);
-            return;
+        // 1. 各母音への距離から比率（パーセント）を計算
+        let totalWeight = 0;
+        let weights = [];
+        const p = 2; 
+
+        vowels.forEach(v => {
+            const dx = currentX - v.x;
+            const dy = currentY - v.y;
+            const distance = Math.sqrt(dx*dx + dy*dy);
+            const weight = distance === 0 ? 999999 : 1 / Math.pow(distance, p);
+            weights.push({ label: v.label, weight: weight });
+            totalWeight += weight;
+        });
+
+        // 2. 一番高いパーセント（ウエイト）の母音を1つ選択
+        let maxWeight = -1;
+        let highestVowelLabel = 'A'; // デフォルト
+
+        weights.forEach(w => {
+            const ratio = w.weight / totalWeight;
+            if (ratio > maxWeight) {
+                maxWeight = ratio;
+                highestVowelLabel = w.label;
+            }
+        });
+
+        // 3. 選択された「子音フォルダ + ターゲット母音」のWAVを選択して再生
+        const buffer = audioBuffers[consonantKey][highestVowelLabel];
+        if (buffer) {
+            const source = audioCtx.createBufferSource();
+            source.buffer = buffer;
+            source.connect(mainGain);
+            source.start(0);
+            console.log(`発音 🌟 子音 [${consonantKey.toUpperCase()}] ➡️ 最寄りの母音 [${highestVowelLabel}] (${Math.round(maxWeight*100)}%)`);
+        } else {
+            console.warn(`バッファがありません: ${consonantKey}/${consonantKey}${highestVowelLabel.toLowerCase()}.wav`);
         }
-
-        // ワンショットWAVの再生ソースを作成
-        const source = audioCtx.createBufferSource();
-        source.buffer = buffer;
-        source.connect(mainGain);
-        source.start(0);
-
-        // 🌟 将来ここに「左手親指の今現在地（母音）」を自動判定し、
-        // 40種類の調音結合WAV（k_a.wav や k_i.wav など）に切り替える選択ロジックを実装します
     }
 
-    // --- UI描画・イベント制御（左手母音パッド） ---
+    // --- UI描画・イベント制御 ---
     function resizePad() {
         padCanvas.width = padCanvas.clientWidth;
         padCanvas.height = padCanvas.clientHeight;
@@ -302,7 +310,6 @@
         const h = padCanvas.height;
         padCtx.clearRect(0, 0, w, h);
 
-        // 5つのサークルを描画（指示通りの真円・配置）
         vowels.forEach(v => {
             const cx = v.x * w;
             const cy = v.y * h;
@@ -317,7 +324,6 @@
             padCtx.fill();
             padCtx.stroke();
 
-            // ラベル
             padCtx.fillStyle = '#fff';
             padCtx.font = 'bold 12px sans-serif';
             padCtx.textAlign = 'center';
@@ -325,7 +331,6 @@
             padCtx.fillText(v.label, cx, cy);
         });
 
-        // 現在位置のポインタ
         const px = currentX * w;
         const py = currentY * h;
         padCtx.strokeStyle = '#fff';
@@ -342,13 +347,9 @@
         currentX = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
         currentY = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
         drawPad();
-        
-        // 今後、このcurrentX, currentYの時間軸モーフィング合成音が常時ループ再生されます
     }
 
-    // --- イベントリスナー設定 ---
     function setupInputEvents() {
-        // 左手母音パッド（マウス＆タッチ対応）
         const onVowelDown = (e) => { isVowelTouching = true; handleVowelPointer(e); };
         const onVowelMove = (e) => { if (isVowelTouching) handleVowelPointer(e); };
         const onVowelUp = () => { isVowelTouching = false; drawPad(); };
@@ -360,7 +361,6 @@
         window.addEventListener('touchmove', (e) => { onVowelMove(e.touches[0]); }, { passive: false });
         window.addEventListener('touchend', onVowelUp);
 
-        // 右手子音ボタン（マルチタッチに完全対応するため個別にイベント登録）
         const buttonTrigger = (el) => {
             const cKey = el.getAttribute('data-consonant');
             if (cKey) triggerConsonant(cKey);
@@ -375,12 +375,11 @@
         });
     }
 
-    // システムアクティベートボタン
     playBtn.addEventListener('click', () => {
         if (!isPlaying) {
             if (audioCtx.state === 'suspended') audioCtx.resume();
             isPlaying = true;
-            playBtn.textContent = '🔊 トレーニングボード稼働中';
+            playBtn.textContent = '🔊 ボード稼働中（S, K, T 実音連動）';
             playBtn.classList.add('playing');
         } else {
             audioCtx.suspend();
@@ -390,8 +389,10 @@
         }
     });
 
-    // ページロード時にオーディオファイルのロードを開始
-    window.addEventListener('DOMContentLoaded', initAudioAndLoadFiles);
+    window.addEventListener('DOMContentLoaded', () => {
+        initAudioAndLoadFiles();
+        setupInputEvents();
+    });
 </script>
 </body>
 </html>
