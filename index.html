@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>5秒タイマー連動型・音声引き伸ばし合成ボード（縦型音量フェーダー＆レイアウト最適化版）</title>
+    <title>5秒タイマー連動型・音声合成ボード（スマホ完全最適化版）</title>
     <style>
         body { 
             font-family: sans-serif; 
@@ -17,45 +17,21 @@
             user-select: none;
             -webkit-user-select: none;
             touch-action: none; 
-        }
-
-        .app-container {
-            display: grid;
-            /* 🌟 レイアウト比率の再分配
-               左パネル（ログ＋母音パネル）：35% + 5% = 40%
-               中央パネル（縦型音量フェーダー）：5%
-               右パネル（子音ボタン）：65% -> 55%
-            */
-            grid-template-columns: 40% 5% 55%; 
-            width: 100%;
-            height: 100%;
-            box-sizing: border-box;
-        }
-
-        /* --- 左パネル（母音＋ログ） --- */
-        .left-panel {
             display: flex;
-            flex-direction: column;
-            justify-content: flex-start; 
-            align-items: center;
-            padding: 10px 8px;
-            box-sizing: border-box;
-            border-right: 1px solid #2a2a35;
+            flex-direction: column; /* 🌟 縦に並べる構造に変更 */
+        }
+
+        /* 🌟 ログエリアを最上部に完全に独立させ、絶対にズレないように固定 */
+        .top-header {
+            width: 100%;
             background: #15151a;
-            gap: 12px;
-            height: 100%;
-        }
-
-        .log-container {
-            width: 100%;
-            background: #0d0d11;
-            border: 1px solid #333;
-            border-radius: 6px;
-            padding: 6px 8px;
+            border-bottom: 2px solid #2a2a35;
+            padding: 6px 12px;
             box-sizing: border-box;
             display: flex;
             flex-direction: column;
-            gap: 4px;
+            gap: 2px;
+            flex-shrink: 0; /* 潰れ防止 */
         }
 
         .log-row {
@@ -67,15 +43,15 @@
         }
 
         .log-label {
-            font-size: 9px;
+            font-size: 10px;
             color: #888;
-            width: 45px;
+            width: 75px;
             flex-shrink: 0;
             font-weight: bold;
         }
 
         .log-text {
-            font-size: 11px;
+            font-size: 13px;
             font-weight: bold;
             letter-spacing: 0.5px;
             overflow: hidden;
@@ -86,13 +62,38 @@
         #rawLog { color: #ffcc00; }
         #convertedLog { color: #00ffcc; }
 
-        /* 🌟 5%拡張された母音パネルのコンテナ */
+        /* 🌟 メインの演奏宇宙（上部ログを除いた残りの全画面） */
+        .main-workspace {
+            display: grid;
+            /* 母音パネル：32%（小さく）、音量：5%、子音パネル：63% */
+            grid-template-columns: 32% 5% 63%; 
+            width: 100%;
+            flex-grow: 1; /* 残りの高さをすべて使う */
+            box-sizing: border-box;
+            overflow: hidden;
+        }
+
+        /* --- 左パネル（母音パネル：32%に縮小） --- */
+        .left-panel {
+            display: flex;
+            flex-direction: column;
+            justify-content: center; 
+            align-items: center;
+            padding: 8px;
+            box-sizing: border-box;
+            border-right: 1px solid #2a2a35;
+            background: #15151a;
+            height: 100%;
+            overflow: hidden;
+        }
+
         .pad-container {
             width: 100%;
-            flex-grow: 1; /* 縦方向にもスペースを最大限活用 */
+            height: 100%;
             display: flex;
             align-items: center;
             justify-content: center;
+            overflow: hidden;
         }
 
         #vowelPad {
@@ -101,11 +102,10 @@
             border-radius: 12px;
             width: 100%;
             height: 100%;
-            max-height: 85vh; /* ログの隙間を埋めるように大きく配置 */
             touch-action: none;
         }
 
-        /* --- 🌟 中央パネル（縦型音量フェーダー） --- */
+        /* --- 中央パネル（縦型音量フェーダー） --- */
         .middle-volume-panel {
             display: flex;
             flex-direction: column;
@@ -113,20 +113,22 @@
             justify-content: center;
             background: #191920;
             border-right: 1px solid #2a2a35;
-            padding: 15px 0;
+            padding: 10px 0;
             box-sizing: border-box;
             height: 100%;
+            overflow: hidden;
         }
 
         .volume-label-vertical {
-            font-size: 9px;
+            font-size: 8px;
             color: #ccc;
             font-weight: bold;
             text-align: center;
-            margin-bottom: 10px;
-            writing-mode: vertical-rl; /* 縦書きでスマートに配置 */
+            margin-bottom: 5px;
+            writing-mode: vertical-rl;
             text-orientation: mixed;
             letter-spacing: 1px;
+            flex-shrink: 0;
         }
 
         .slider-wrapper {
@@ -138,14 +140,13 @@
             width: 100%;
         }
 
-        /* 縦型レンジスライダーのスタイリング */
         .volume-slider-vertical {
             -webkit-appearance: none;
             appearance: none;
-            transform: rotate(-90deg); /* 反時計回りに90度回転して縦型化 */
+            transform: rotate(-90deg);
             background: #333;
-            height: 8px;
-            width: 60vh; /* 画面縦幅基準で長さを均等確保 */
+            height: 6px;
+            width: 45vh; /* スマホの横画面用に少し短くしてはみ出し防止 */
             border-radius: 4px;
             outline: none;
             position: absolute;
@@ -155,23 +156,24 @@
         .volume-slider-vertical::-webkit-slider-thumb {
             -webkit-appearance: none;
             appearance: none;
-            width: 22px;
-            height: 22px;
+            width: 20px;
+            height: 20px;
             border-radius: 50%;
-            background: #ff3366; /* 3倍ブースト可能なので警告・熱血をイメージした赤ピンク系アクセント */
-            box-shadow: 0 0 8px rgba(255, 51, 102, 0.6);
+            background: #ff3366;
+            box-shadow: 0 0 6px rgba(255, 51, 102, 0.6);
             cursor: pointer;
         }
 
         #volValue {
-            font-size: 10px;
+            font-size: 9px;
             font-weight: bold;
             color: #ff3366;
-            margin-top: 10px;
+            margin-top: 5px;
             text-align: center;
+            flex-shrink: 0;
         }
 
-        /* --- 右パネル（子音ボタン：55%に集約化） --- */
+        /* --- 右パネル（子音ボタン） --- */
         .right-panel-container {
             display: flex;
             flex-direction: column;
@@ -179,27 +181,28 @@
             height: 100%;
             background: #1e1e24;
             box-sizing: border-box;
-            padding: 10px; 
+            padding: 8px; 
+            overflow: hidden;
         }
 
         .right-panel {
             display: grid;
             grid-template-rows: repeat(3, 1fr); 
-            gap: 10px;
-            height: 90%; 
+            gap: 6px;
+            height: 96%; 
             box-sizing: border-box;
         }
 
         .button-row {
             display: grid;
             grid-template-columns: repeat(4, 1fr); 
-            gap: 10px;
+            gap: 6px;
         }
 
         .consonant-btn {
             background: #2e2e3a;
             border: 1px solid #444;
-            border-radius: 8px;
+            border-radius: 6px;
             color: #fff;
             display: flex;
             flex-direction: column;
@@ -212,28 +215,28 @@
         }
         
         .playable-key { border: 1px solid #00ffcc !important; }
-        .btn-index { border-bottom: 4px solid #00cc00; } 
-        .btn-middle { border-bottom: 4px solid #d4af37; } 
-        .btn-ring { border-bottom: 4px solid #007bff; } 
-        .btn-little { border-bottom: 4px solid #ff00ff; } 
+        .btn-index { border-bottom: 3px solid #00cc00; } 
+        .btn-middle { border-bottom: 3px solid #d4af37; } 
+        .btn-ring { border-bottom: 3px solid #007bff; } 
+        .btn-little { border-bottom: 3px solid #ff00ff; } 
 
         .split-btn-container {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 4px;
+            gap: 3px;
         }
         .split-sub-btn {
             background: #2e2e3a;
             border: 1px solid #444;
-            border-radius: 6px;
+            border-radius: 4px;
             color: #fff;
             display: flex;
             flex-direction: column;
             justify-content: center;
             align-items: center;
             font-weight: bold;
-            font-size: 14px;
-            border-bottom: 4px solid #ff00ff; 
+            font-size: 13px;
+            border-bottom: 3px solid #ff00ff; 
             box-sizing: border-box;
         }
 
@@ -242,32 +245,30 @@
             transform: scale(0.98);
         }
 
-        .btn-label { font-size: 18px; }
-        .btn-sub { font-size: 10px; color: #aaa; margin-top: 2px; }
+        .btn-label { font-size: 16px; }
+        .btn-sub { font-size: 9px; color: #aaa; margin-top: 1px; }
     </style>
 </head>
 <body>
 
-<div class="app-container">
-    <!-- 左パネル（母音パネルを5%拡大） -->
-    <div class="left-panel">
-        <div class="log-container">
-            <div class="log-row">
-                <span class="log-label">リアルタイム</span>
-                <span id="rawLog" class="log-text"></span>
-            </div>
-            <div class="log-row">
-                <span class="log-label">5秒ラグ変換</span>
-                <span id="convertedLog" class="log-text"></span>
-            </div>
-        </div>
+<div class="top-header">
+    <div class="log-row">
+        <span class="log-label">リアルタイム：</span>
+        <span id="rawLog" class="log-text"></span>
+    </div>
+    <div class="log-row">
+        <span class="log-label">5秒ラグ変換：</span>
+        <span id="convertedLog" class="log-text"></span>
+    </div>
+</div>
 
+<div class="main-workspace">
+    <div class="left-panel">
         <div class="pad-container">
             <canvas id="vowelPad"></canvas>
         </div>
     </div>
 
-    <!-- 🌟 中央パネル（横幅5%の縦型音量フェーダーエリア） -->
     <div class="middle-volume-panel">
         <div class="volume-label-vertical">VOLUME BOOST</div>
         <div class="slider-wrapper">
@@ -276,7 +277,6 @@
         <div id="volValue">100%</div>
     </div>
 
-    <!-- 右パネル（65%から55%に凝縮し、右側にまとめて配置） -->
     <div class="right-panel-container">
         <div class="right-panel">
             <div class="button-row">
@@ -284,8 +284,8 @@
                 <div class="consonant-btn btn-middle playable-key" data-consonant="g"><span class="btn-label">G</span><span class="btn-sub">が行</span></div>
                 <div class="consonant-btn btn-ring playable-key" data-consonant="d"><span class="btn-label">D</span><span class="btn-sub">だ行</span></div>
                 <div class="split-btn-container">
-                    <div class="split-sub-btn playable-key" data-consonant="b"><span class="btn-label" style="font-size:15px;">B</span><span class="btn-sub" style="font-size:8px;">ば</span></div>
-                    <div class="split-sub-btn playable-key" data-consonant="p"><span class="btn-label" style="font-size:15px;">P</span><span class="btn-sub" style="font-size:8px;">ぱ</span></div>
+                    <div class="split-sub-btn playable-key" data-consonant="b"><span class="btn-label" style="font-size:13px;">B</span><span class="btn-sub" style="font-size:8px;">ば</span></div>
+                    <div class="split-sub-btn playable-key" data-consonant="p"><span class="btn-label" style="font-size:13px;">P</span><span class="btn-sub" style="font-size:8px;">ぱ</span></div>
                 </div>
             </div>
 
@@ -311,18 +311,18 @@
     let mainGain = null;
     let isPlaying = false;
 
-    // ストリーミング・バッファ
     let rawHistoryArray = [];      
     let lastProcessedIndex = 0;    
     let activeTimerId = null;      
     
+    // 🌟 スマホ横画面用に配置の基準座標と半径(r)の比率をコンパクトに微調整
     const vowels = [
-        { label: 'I', x: 0.23, y: 0.25, r: 0.23, color: 'rgba(0, 200, 0, 0.15)', border: '#00cc00', isVowel: true }, 
-        { label: 'E', x: 0.55, y: 0.21, r: 0.18, color: 'rgba(255, 230, 0, 0.25)', border: '#d4af37', isVowel: true }, 
-        { label: 'A', x: 0.78, y: 0.54, r: 0.22, color: 'rgba(255, 0, 0, 0.15)', border: '#ff0000', isVowel: true }, 
-        { label: 'U', x: 0.18, y: 0.67, r: 0.18, color: 'rgba(0, 0, 255, 0.15)', border: '#0000ff', isVowel: true }, 
-        { label: 'O', x: 0.46, y: 0.80, r: 0.23, color: 'rgba(255, 0, 255, 0.15)', border: '#ff00ff', isVowel: true },
-        { label: 'NN', x: 0.45, y: 0.50, r: 0.12, color: 'rgba(255, 255, 255, 0.1)', border: '#ffffff', isVowel: false } 
+        { label: 'I', x: 0.25, y: 0.26, r: 0.22, color: 'rgba(0, 200, 0, 0.15)', border: '#00cc00', isVowel: true }, 
+        { label: 'E', x: 0.58, y: 0.23, r: 0.18, color: 'rgba(255, 230, 0, 0.25)', border: '#d4af37', isVowel: true }, 
+        { label: 'A', x: 0.76, y: 0.54, r: 0.21, color: 'rgba(255, 0, 0, 0.15)', border: '#ff0000', isVowel: true }, 
+        { label: 'U', x: 0.22, y: 0.67, r: 0.18, color: 'rgba(0, 0, 255, 0.15)', border: '#0000ff', isVowel: true }, 
+        { label: 'O', x: 0.50, y: 0.78, r: 0.21, color: 'rgba(255, 0, 255, 0.15)', border: '#ff00ff', isVowel: true },
+        { label: 'NN', x: 0.46, y: 0.50, r: 0.12, color: 'rgba(255, 255, 255, 0.1)', border: '#ffffff', isVowel: false } 
     ];
 
     const romajiMap = {
@@ -370,7 +370,6 @@
         if (!audioCtx) {
             audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             mainGain = audioCtx.createGain();
-            // 🌟 100% = 1.0のゲインにマッピング
             mainGain.gain.value = parseFloat(volSlider.value) / 100;
             mainGain.connect(audioCtx.destination);
             isPlaying = true;
@@ -381,12 +380,9 @@
         if (!isPlaying) return;
         if (activeTimerId !== null) return;
 
-        console.log("【タイマー始動】最初のキーが叩かれたので5秒のカウントを開始しますお！");
-        
         activeTimerId = setTimeout(async () => {
             await processStreamingBuffer();
             activeTimerId = null;
-            console.log("【タイマー終了】待機状態に戻りました。");
         }, 5000);
     }
 
@@ -424,8 +420,8 @@
                 finalConvertedText = data.map(word => word[1][0]).join('');
             }
 
-            if (finalConvertedText.length > 10) {
-                finalConvertedText = finalConvertedText.slice(-10);
+            if (finalConvertedText.length > 15) {
+                finalConvertedText = finalConvertedText.slice(-15);
             }
             convertedLogEl.textContent = finalConvertedText;
 
@@ -457,13 +453,8 @@
 
         utterance.rate = targetRate; 
         utterance.pitch = 0.95; 
-
-        // 🌟 Web Speech API自体にはボリューム増幅(1.0超)がないため、
-        // 3倍ブーストに対応したAudioContextのmainGainに音声を流し込むために
-        // スライダーの数値をそのまま音声にも適用（または全体のマスターゲインで制御）
         utterance.volume = Math.min(1.0, parseFloat(volSlider.value) / 100);
 
-        console.log(`【音声引き伸ばし】文字数: ${charCount} -> 速度: ${targetRate.toFixed(2)}倍速`);
         window.speechSynthesis.speak(utterance);
     }
 
@@ -510,8 +501,8 @@
                 lastProcessedIndex = Math.max(0, lastProcessedIndex - 1);
             }
             let displayRaw = rawHistoryArray.join('');
-            if (displayRaw.length > 10) {
-                displayRaw = displayRaw.slice(-10);
+            if (displayRaw.length > 15) {
+                displayRaw = displayRaw.slice(-15);
             }
             rawLogEl.textContent = displayRaw;
         }
@@ -524,13 +515,21 @@
     }
     window.addEventListener('resize', resizePad);
 
+    // 🌟 スマホの横画面（押し潰されたアスペクト比）でも円が歪まないように正円ベースで描画
     function drawPad() {
         const w = padCanvas.width, h = padCanvas.height;
         if (!w || !h) return;
         padCtx.clearRect(0, 0, w, h);
 
+        // 潰れを防ぐため、短い方の辺（通常は高さh）を基準に「正円用の絶対サイズ」を計算
+        const baseSize = Math.min(w, h);
+
         vowels.forEach(v => {
-            const cx = v.x * w, cy = v.y * h, radius = v.r * w;
+            // 中心点の計算をCanvasの実サイズにマッピング
+            const cx = v.x * w;
+            const cy = v.y * h;
+            const radius = v.r * baseSize * 0.95; // 🌟 母音パネルを少し小さく補正
+
             padCtx.fillStyle = v.color;
             padCtx.strokeStyle = v.border;
             padCtx.lineWidth = v.isVowel ? 1.5 : 2.5; 
@@ -540,7 +539,7 @@
             padCtx.stroke();
 
             padCtx.fillStyle = '#fff';
-            padCtx.font = v.isVowel ? 'bold 14px sans-serif' : 'bold 11px sans-serif'; 
+            padCtx.font = v.isVowel ? 'bold 13px sans-serif' : 'bold 11px sans-serif'; 
             padCtx.textAlign = 'center';
             padCtx.textBaseline = 'middle';
             padCtx.fillText(v.label, cx, cy);
@@ -548,7 +547,7 @@
 
         const px = currentX * w, py = currentY * h;
         padCtx.strokeStyle = '#fff'; padCtx.lineWidth = 2;
-        padCtx.beginPath(); padCtx.arc(px, py, 6, 0, 2 * Math.PI);
+        padCtx.beginPath(); padCtx.arc(px, py, 5, 0, 2 * Math.PI);
         padCtx.fillStyle = isVowelTouching ? '#007bff' : 'rgba(255,255,255,0.2)';
         padCtx.fill(); padCtx.stroke();
     }
@@ -629,7 +628,6 @@
             }, { passive: false });
         });
 
-        // 🌟 縦型フェーダーの値をマスターゲイン（最大3倍 = 3.0）にリアルタイム反映
         volSlider.addEventListener('input', (e) => {
             const val = e.target.value;
             volValueEl.textContent = val + "%";
@@ -641,7 +639,7 @@
 
     window.addEventListener('DOMContentLoaded', () => {
         setupInputEvents();
-        setTimeout(resizePad, 100);
+        setTimeout(resizePad, 150);
     });
 </script>
 </body>
