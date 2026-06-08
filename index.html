@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>7秒ストリーミング音声合成ボード</title>
+    <title>5秒ストリーミング音声合成ボード</title>
     <style>
         body { 
             font-family: sans-serif; 
@@ -67,12 +67,14 @@
             font-weight: bold;
         }
 
+        /* 🌟 フォントサイズを少しだけ最適化し、10文字が潰れずに1行に綺麗に収まるよう調整 */
         .log-text {
-            font-size: 12px;
+            font-size: 11px;
             font-weight: bold;
-            letter-spacing: 1px;
+            letter-spacing: 0.5px;
             overflow: hidden;
             text-overflow: ellipsis;
+            white-space: nowrap;
         }
 
         #rawLog { color: #ffcc00; }
@@ -214,7 +216,7 @@
                 <span id="rawLog" class="log-text"></span>
             </div>
             <div class="log-row">
-                <span class="log-label">7秒ラグ変換</span>
+                <span class="log-label">5秒ラグ変換</span>
                 <span id="convertedLog" class="log-text"></span>
             </div>
         </div>
@@ -267,8 +269,7 @@
     let isPlaying = false;
 
     // ストリーミング・バッファ管理
-    let inputHistory = []; 
-    let rawString = "";    
+    let rawString = ""; // 画面上の最新生ひらがな文字列（最大10文字キープ）
     
     const vowels = [
         { label: 'I', x: 0.23, y: 0.25, r: 0.23, color: 'rgba(0, 200, 0, 0.15)', border: '#00cc00', isVowel: true }, 
@@ -315,28 +316,24 @@
             mainGain.connect(audioCtx.destination);
             isPlaying = true;
             
-            // 🌟 7秒ごとの定期スキャンタイマーに変更
-            setInterval(processStreamingBuffer, 7000);
+            // 🌟 5秒ごとの定期スキャンタイマーにリ戻し
+            setInterval(processStreamingBuffer, 5000);
         }
     }
 
+    // 🌟 5秒ごとに、今見えている生文字列（最大10文字）を丸ごと一撃で漢字変換して読み上げる
     async function processStreamingBuffer() {
         if (!isPlaying) return;
 
-        const now = Date.now();
-        // 過去7秒間より古い履歴を削除
-        inputHistory = inputHistory.filter(item => now - item.time <= 7000);
+        // 今リアルタイム欄に出ている文字をそのまま取得
+        const targetString = rawString;
 
-        // 🌟 「スキャン時点から数えて、過去7秒前〜過去4秒前」までの【最初の3秒間分】を抽出
-        // 直近の4秒間に打たれた文字は、次回以降の7秒周期の中で「古い3秒」になった時に処理されます
-        const targetChars = inputHistory.filter(item => {
-            const age = now - item.time;
-            return age >= 4000 && age <= 7000; 
-        });
+        // 何も打たれていなければ何もしない
+        if (!targetString) return;
 
-        if (targetChars.length === 0) return;
+        console.log(`【5秒スキャン作動】現在の最新生文字列（10文字枠）をそのまま送信: "${targetString}"`);
 
-        const targetString = targetChars.map(item => item.char).join('');
+        // Googleの日本語入力APIにそのまま丸投げ
         const apiUrl = `https://www.google.com/transliterate?langpair=ja-Hira|ja&text=${encodeURIComponent(targetString)}`;
 
         try {
@@ -346,12 +343,13 @@
             const data = await response.json();
             let convertedResult = data.map(word => word[1][0]).join('');
 
+            // 🌟 下段の変換ログにも、ケチらず最新の10文字を綺麗にそのまま代入！
             if (convertedResult.length > 10) {
-                convertedResult = "…" + convertedResult.slice(-9);
+                convertedResult = convertedResult.slice(-10); // 10文字を超える場合は最新の末尾10文字を残す
             }
             convertedLogEl.textContent = convertedResult;
 
-            // 🌟 抽出した文字を音声出力にパス
+            // 🌟 変換後のテキストを、その文字数の長さ（秒数）分だけ流暢に読み上げる
             playStreamedSlice(convertedResult);
 
         } catch (e) {
@@ -359,22 +357,17 @@
         }
     }
 
-    // 🌟 同じ秒数（指定したテキストの長さ分）で音声を出力する制御
+    // 🌟 変換後のテキストを、ぶつ切りにせずその文字数の秒数分だけ自然に喋らせる
     function playStreamedSlice(textToSpeak) {
-        if (!textToSpeak || textToSpeak === "…") return;
+        if (!textToSpeak) return;
 
-        // すでに前の発声が残っていたらクリアして新しく喋らせる
+        // 新しい声を出す前に、前の音声が残っていれば即座にクリア
         window.speechSynthesis.cancel();
 
         const utterance = new SpeechSynthesisUtterance(textToSpeak);
         utterance.lang = 'ja-JP';
-        utterance.rate = 1.1; // 標準よりわずかに流暢に
+        utterance.rate = 1.1; // わずかに滑らかで聴き取りやすいスピード
         utterance.pitch = 1.0;
-
-        // 🌟 「同じ秒数で音声出力」の処理
-        // 前回の1秒固定での強制打ち切り（cancelタイマー）を撤去しました！
-        // これにより、Googleが組み立てたテキスト（最初の3秒分に該当する変換結果）を、
-        // 途中でぶつ切りにすることなく、文字量に応じた自然な長さで最後まで綺麗に喋りきります。
 
         window.speechSynthesis.speak(utterance);
     }
@@ -415,9 +408,8 @@
         }
 
         if (pressedChar) {
-            inputHistory.push({ char: pressedChar, time: Date.now() });
-
             rawString += pressedChar;
+            // リアルタイム表示を常に最新10文字に制限
             if (rawString.length > 10) {
                 rawString = rawString.slice(-10);
             }
