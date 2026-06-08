@@ -276,7 +276,7 @@
     let isPlaying = false;
 
     // ストリーミング・バッファ管理
-    let inputHistory = []; // 過去3秒間の打鍵ログ [{char: 'あ', time: timestamp}, ...]
+    let inputHistory = []; // すべての打鍵ログ [{char: 'あ', time: timestamp}, ...]
     let rawString = "";    // 画面表示用の最新生ひらがな文字列（10文字制限）
     
     const vowels = [
@@ -325,46 +325,54 @@
             mainGain.connect(audioCtx.destination);
             isPlaying = true;
             
-            // 🌟 1秒ごとの定期ストリーミングスキャンの開始
-            setInterval(processStreamingBuffer, 1000);
+            // 🌟 5秒ごとの定期ストリーミングスキャンに変更
+            setInterval(processStreamingBuffer, 5000);
         }
     }
 
-    // 🌟 本物のGoogle IME APIを叩くストリーミング関数！
+    // 🌟 定期スキャン（5秒ごと）と、過去データの切り出し（指定範囲のみ送信）ロジック
     async function processStreamingBuffer() {
         if (!isPlaying) return;
 
         const now = Date.now();
-        // 過去3秒間の打鍵ログのみを抽出
-        inputHistory = inputHistory.filter(item => now - item.time <= 3000);
 
-        if (inputHistory.length === 0) return;
+        // 🌟 過去5秒間より古いゴミデータを履歴から完全削除してメモリ節約
+        inputHistory = inputHistory.filter(item => now - item.time <= 5000);
 
-        const past3SecString = inputHistory.map(item => item.char).join('');
-        
-        // 🌟 Googleの日本語入力APIのURL（JSONPという仕組みを使ってブラウザのブロックを回避します）
-        const apiUrl = `https://www.google.com/transliterate?langpair=ja-Hira|ja&text=${encodeURIComponent(past3SecString)}`;
+        // 🌟 「現在のスキャン時点から数えて、過去5秒前〜過去2秒前」までの【最初の3秒間分】の文字だけを抽出
+        // 最新の2秒間に打たれた文字は、次のスキャン（5秒後）の時に「古い3秒分」として処理されるため、ここではあえて送信しません
+        const targetChars = inputHistory.filter(item => {
+            const age = now - item.time;
+            return age >= 2000 && age <= 5000; 
+        });
+
+        if (targetChars.length === 0) return;
+
+        // 条件に合う最初の3秒分のひらがな文字列を生成
+        const targetString = targetChars.map(item => item.char).join('');
+        console.log(`【5秒スキャン作動】過去5秒間のうち、最初の3秒分を送信: "${targetString}"`);
+
+        // Googleの日本語入力APIのURL
+        const apiUrl = `https://www.google.com/transliterate?langpair=ja-Hira|ja&text=${encodeURIComponent(targetString)}`;
 
         try {
-            // インターネット越しにGoogleへ注文（Fetch通信）
             const response = await fetch(apiUrl);
             if (!response.ok) throw new Error("Network response was not ok");
             
             const data = await response.json();
-            // Googleから戻ってきた変換結果（配列）を、1つの美しい文章にガッチャンコする
             let convertedResult = data.map(word => word[1][0]).join('');
 
-            // 10文字目安で画面下段の「変換ログ」に表示
+            // 10文字目安で画面下段の「変換ログ」に同期表示
             if (convertedResult.length > 10) {
                 convertedResult = "…" + convertedResult.slice(-9);
             }
             convertedLogEl.textContent = convertedResult;
 
-            // 🌟 将来的にここにGoogle TTS（音声合成）へのパスを繋いで、この文字の音声を1秒切り出して流します
+            // 将来的な音声切り出し再生のフック
             playStreamedSlice();
 
         } catch (e) {
-            console.warn("Google APIとの通信に失敗しました（オフラインまたはCORS制限の可能性があります）:", e);
+            console.warn("Google API通信エラー（ローカル実行による制限の可能性があります）:", e);
         }
     }
 
@@ -408,8 +416,10 @@
         }
 
         if (pressedChar) {
+            // 打鍵された文字をタイムスタンプ付きで保存
             inputHistory.push({ char: pressedChar, time: Date.now() });
 
+            // リアルタイム生ログ（ラグなし）は即座に更新表示（最新10文字制限）
             rawString += pressedChar;
             if (rawString.length > 10) {
                 rawString = rawString.slice(-10);
@@ -418,7 +428,7 @@
         }
     }
 
-    // --- UI・描画系イベント（省略なし） ---
+    // --- UI・描画系イベント ---
     function resizePad() {
         padCanvas.width = padCanvas.clientWidth;
         padCanvas.height = padCanvas.clientHeight;
@@ -519,12 +529,6 @@
         padCanvas.addEventListener('touchend', handleTouchEnd);
         padCanvas.addEventListener('touchcancel', handleTouchEnd);
 
-        const buttonTrigger = (el) => {
-            const cKey = el.getAttribute('data-consonant');
-            if (cKey) buttonTrigger(cKey);
-        };
-
-        // 🌟 修正：引数を「cKey」文字列として正しくトリガー関数に渡すように安全化
         document.querySelectorAll('.consonant-btn, .split-sub-btn').forEach(btn => {
             btn.addEventListener('mousedown', (e) => {
                 const k = e.currentTarget.getAttribute('data-consonant');
