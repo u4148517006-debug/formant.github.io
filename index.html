@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>5秒タイマー連動型・音声合成ボード（下部10%セーフエリア確保版）</title>
+    <title>5秒タイマー連動型・音声合成ボード（フリック入力＆遡り促音搭載版）</title>
     <style>
         body { 
             font-family: sans-serif; 
@@ -12,7 +12,6 @@
             margin: 0; 
             padding: 0; 
             overflow: hidden; 
-            /* スマホの画面高さを正確に取得（非対応ブラウザ用に100vhも残す） */
             height: 100vh;
             height: 100dvh;
             user-select: none;
@@ -22,7 +21,6 @@
             flex-direction: column; 
         }
 
-        /* 🌟 最上部のログエリア（固定） */
         .top-header {
             width: 100%;
             background: #15151a;
@@ -63,19 +61,16 @@
         #rawLog { color: #ffcc00; }
         #convertedLog { color: #00ffcc; }
 
-        /* 🌟 メインの演奏領域（ここが自動的に伸縮する） */
         .main-workspace {
             display: grid;
             grid-template-columns: 32% 5% 63%; 
             width: 100%;
-            /* 残りの高さをすべて使うが、flex-shrinkで縮むのを許容する */
             flex-grow: 1; 
             min-height: 0; 
             box-sizing: border-box;
             overflow: hidden;
         }
 
-        /* --- 左パネル（母音パネル：32%） --- */
         .left-panel {
             display: flex;
             flex-direction: column;
@@ -107,7 +102,6 @@
             touch-action: none;
         }
 
-        /* --- 中央パネル（縦型音量フェーダー：5%） --- */
         .middle-volume-panel {
             display: flex;
             flex-direction: column;
@@ -148,7 +142,7 @@
             transform: rotate(-90deg);
             background: #333;
             height: 6px;
-            width: 40vh; /* 少し短めにして画面内に安全に収める */
+            width: 40vh;
             border-radius: 4px;
             outline: none;
             position: absolute;
@@ -175,7 +169,6 @@
             flex-shrink: 0;
         }
 
-        /* --- 右パネル（子音ボタン：63%） --- */
         .right-panel-container {
             display: flex;
             flex-direction: column;
@@ -250,19 +243,17 @@
         .btn-label { font-size: 16px; }
         .btn-sub { font-size: 9px; color: #aaa; margin-top: 1px; }
 
-        /* 🌟 画面下部に物理的な10%の空きスペースを強制的に確保 */
         .bottom-spacer {
-            height: 10vh; /* 画面の高さの10% */
+            height: 10vh;
             height: 10dvh;
             width: 100%;
             flex-shrink: 0;
-            background: #1e1e24; /* 背景と同じ色にして目立たせない */
+            background: #1e1e24; 
         }
     </style>
 </head>
 <body>
 
-<!-- 最上部のログヘッダー -->
 <div class="top-header">
     <div class="log-row">
         <span class="log-label">リアルタイム：</span>
@@ -274,16 +265,13 @@
     </div>
 </div>
 
-<!-- メインの演奏領域 -->
 <div class="main-workspace">
-    <!-- 左パネル（母音パッド） -->
     <div class="left-panel">
         <div class="pad-container">
             <canvas id="vowelPad"></canvas>
         </div>
     </div>
 
-    <!-- 中央パネル（縦型音量フェーダー） -->
     <div class="middle-volume-panel">
         <div class="volume-label-vertical">VOLUME BOOST</div>
         <div class="slider-wrapper">
@@ -292,7 +280,6 @@
         <div id="volValue">100%</div>
     </div>
 
-    <!-- 右パネル（子音ボタン） -->
     <div class="right-panel-container">
         <div class="right-panel">
             <div class="button-row">
@@ -322,7 +309,6 @@
     </div>
 </div>
 
-<!-- 🌟 これが画面下部に絶対に確保される10%の空きスペース -->
 <div class="bottom-spacer"></div>
 
 <script>
@@ -334,7 +320,14 @@
     let lastProcessedIndex = 0;    
     let activeTimerId = null;      
     
-    // 円のサイズや配置バランスはスマホの横画面向けに調整済み
+    // 🌟 促音（っ）判定用の変数
+    let lastConsonantKey = null;
+    let lastConsonantTime = 0;
+
+    // 🌟 フリック判定用の変数
+    let touchStartVowelLabel = null;
+    let flickCancelled = false;
+    
     const vowels = [
         { label: 'I', x: 0.25, y: 0.26, r: 0.22, color: 'rgba(0, 200, 0, 0.15)', border: '#00cc00', isVowel: true }, 
         { label: 'E', x: 0.58, y: 0.23, r: 0.18, color: 'rgba(255, 230, 0, 0.25)', border: '#d4af37', isVowel: true }, 
@@ -360,11 +353,8 @@
         'PA':'ぱ','PI':'ぴ','PU':'ぷ','PE':'ぺ','PO':'ぽ'
     };
 
+    // フリックによる完全入力ができたため、不要なファジーを整理。しゃしゅしょ等の右手入力用は残します
     const fuzzyRules = [
-        { pattern: /うあ/g, alt: "わ" }, 
-        { pattern: /いあ/g, alt: "や" }, 
-        { pattern: /いう/g, alt: "ゆ" }, 
-        { pattern: /いお/g, alt: "よ" }, 
         { pattern: /しあ/g, alt: "しゃ" }, 
         { pattern: /しう/g, alt: "しゅ" }, 
         { pattern: /しお/g, alt: "しょ" }, 
@@ -398,7 +388,6 @@
     function startOnDemandTimer() {
         if (!isPlaying) return;
         if (activeTimerId !== null) return;
-
         activeTimerId = setTimeout(async () => {
             await processStreamingBuffer();
             activeTimerId = null;
@@ -460,31 +449,20 @@
     function playStreamedSliceWithStretch(textToSpeak) {
         if (!textToSpeak) return;
         window.speechSynthesis.cancel();
-
         const utterance = new SpeechSynthesisUtterance(textToSpeak);
         utterance.lang = 'ja-JP';
-
         const charCount = textToSpeak.length;
         let targetRate = (charCount * 0.28) / 5.0;
-
         if (targetRate < 0.1) targetRate = 0.1;
         if (targetRate > 1.2) targetRate = 1.1; 
-
         utterance.rate = targetRate; 
         utterance.pitch = 0.95; 
         utterance.volume = Math.min(1.0, parseFloat(volSlider.value) / 100);
-
         window.speechSynthesis.speak(utterance);
     }
 
-    function getCurrentVowelLabel() {
-        const nnTarget = vowels.find(v => v.label === 'NN');
-        const dxNN = currentX - nnTarget.x;
-        const dyNN = currentY - nnTarget.y;
-        if (Math.sqrt(dxNN*dxNN + dyNN*dyNN) <= nnTarget.r) {
-            return 'ん';
-        }
-
+    // 🌟 Canvasの座標から一番近い「ラベル(A, I, U, E, O)」を取得
+    function getClosestVowelLabelRaw() {
         const pureVowels = vowels.filter(v => v.isVowel); 
         let maxWeight = -1, targetLabel = 'A';
         pureVowels.forEach(v => {
@@ -495,9 +473,48 @@
         return targetLabel;
     }
 
+    // 🌟 これまでの「ん」も含めた判定（右手打鍵用）
+    function getCurrentVowelLabel() {
+        const nnTarget = vowels.find(v => v.label === 'NN');
+        const dxNN = currentX - nnTarget.x;
+        const dyNN = currentY - nnTarget.y;
+        if (Math.sqrt(dxNN*dxNN + dyNN*dyNN) <= nnTarget.r) {
+            return 'ん';
+        }
+        return getClosestVowelLabelRaw();
+    }
+
+    // 🌟 独立した文字（フリックや促音）を配列に流し込む関数
+    function injectChar(char) {
+        initAudio();
+        startOnDemandTimer();
+        rawHistoryArray.push(char);
+        if (rawHistoryArray.length > 20) {
+            rawHistoryArray.shift();
+            lastProcessedIndex = Math.max(0, lastProcessedIndex - 1);
+        }
+        let displayRaw = rawHistoryArray.join('');
+        if (displayRaw.length > 15) displayRaw = displayRaw.slice(-15);
+        rawLogEl.textContent = displayRaw;
+    }
+
     function triggerConsonant(consonantKey) {
         initAudio();
         startOnDemandTimer();
+
+        // 🌟 右手ボタンが叩かれたので、進行中の左手フリックは誤爆防止のためキャンセル
+        flickCancelled = true;
+
+        let now = Date.now();
+        let isSokuon = false;
+
+        // 🌟 促音（っ）の判定ロジック：母音トリガ以外で、同じ子音を300ms以内に連打した場合
+        if (consonantKey !== 'vowel_trigger' && consonantKey === lastConsonantKey && (now - lastConsonantTime) < 300) {
+            isSokuon = true;
+        }
+
+        lastConsonantKey = consonantKey;
+        lastConsonantTime = now;
 
         let pressedChar = "";
         const currentVowel = getCurrentVowelLabel();
@@ -514,16 +531,12 @@
         }
 
         if (pressedChar) {
-            rawHistoryArray.push(pressedChar);
-            if (rawHistoryArray.length > 20) {
-                rawHistoryArray.shift();
-                lastProcessedIndex = Math.max(0, lastProcessedIndex - 1);
+            // 🌟 促音判定がTrueの場合、直前の文字を消して「っ」にすり替える（遡り処理）
+            if (isSokuon && rawHistoryArray.length > 0) {
+                rawHistoryArray.pop(); // 1文字前を削除
+                rawHistoryArray.push('っ'); // 代わりに「っ」を挿入
             }
-            let displayRaw = rawHistoryArray.join('');
-            if (displayRaw.length > 15) {
-                displayRaw = displayRaw.slice(-15);
-            }
-            rawLogEl.textContent = displayRaw;
+            injectChar(pressedChar);
         }
     }
 
@@ -538,13 +551,12 @@
         const w = padCanvas.width, h = padCanvas.height;
         if (!w || !h) return;
         padCtx.clearRect(0, 0, w, h);
-
         const baseSize = Math.min(w, h);
 
         vowels.forEach(v => {
             const cx = v.x * w;
             const cy = v.y * h;
-            const radius = v.r * baseSize * 0.9; // 母音の丸を正円に保つ計算
+            const radius = v.r * baseSize * 0.9; 
 
             padCtx.fillStyle = v.color;
             padCtx.strokeStyle = v.border;
@@ -574,33 +586,62 @@
         currentY = Math.max(0, Math.min(1, (touchOrEvent.clientY - rect.top) / rect.height));
     }
 
-    function setupInputEvents() {
-        padCanvas.addEventListener('mousedown', (e) => {
-            isVowelTouching = true;
+    // 🌟 フリック入力を司るタッチイベント制御
+    function handlePadStart(e) {
+        isVowelTouching = true;
+        flickCancelled = false; // 新しいタッチが始まったらキャンセル状態をリセット
+        updateVowelCoords(e);
+        touchStartVowelLabel = getClosestVowelLabelRaw(); // 開始地点の母音を記録（I または U）
+        drawPad();
+    }
+
+    function handlePadMove(e) {
+        if (isVowelTouching) {
             updateVowelCoords(e);
-            drawPad();
-        });
-        window.addEventListener('mousemove', (e) => {
-            if (isVowelTouching && activeVowelTouchId === null) {
-                updateVowelCoords(e);
-                drawPad(); 
+            drawPad(); 
+        }
+    }
+
+    function handlePadEnd() {
+        isVowelTouching = false;
+        let touchEndVowelLabel = getClosestVowelLabelRaw(); // 終了地点の母音を取得
+
+        // 🌟 もし途中で右手を叩かれておらず、かつ開始位置と終了位置の母音が違う場合＝「フリック成立」
+        if (!flickCancelled && touchStartVowelLabel && touchEndVowelLabel !== touchStartVowelLabel) {
+            const combo = touchStartVowelLabel + '->' + touchEndVowelLabel;
+            let flickChar = "";
+
+            if (combo === 'U->A') flickChar = 'わ';
+            else if (combo === 'U->O') flickChar = 'を';
+            else if (combo === 'I->A') flickChar = 'や';
+            else if (combo === 'I->U') flickChar = 'ゆ';
+            else if (combo === 'I->O') flickChar = 'よ';
+
+            if (flickChar) {
+                console.log(`【フリック判定成立】${combo} ➡️ ${flickChar}`);
+                injectChar(flickChar);
             }
-        });
+        }
+        
+        touchStartVowelLabel = null;
+        drawPad();
+    }
+
+    function setupInputEvents() {
+        // マウス操作
+        padCanvas.addEventListener('mousedown', handlePadStart);
+        window.addEventListener('mousemove', handlePadMove);
         window.addEventListener('mouseup', () => {
-            if (activeVowelTouchId === null) {
-                isVowelTouching = false;
-                drawPad();
-            }
+            if (activeVowelTouchId === null && isVowelTouching) handlePadEnd();
         });
 
+        // タッチパネル操作
         padCanvas.addEventListener('touchstart', (e) => {
             e.preventDefault();
             if (!isVowelTouching) {
                 const touch = e.changedTouches[0];
                 activeVowelTouchId = touch.identifier;
-                isVowelTouching = true;
-                updateVowelCoords(touch);
-                drawPad();
+                handlePadStart(touch);
             }
         }, { passive: false });
 
@@ -609,41 +650,39 @@
             if (isVowelTouching && activeVowelTouchId !== null) {
                 for (let i = 0; i < e.touches.length; i++) {
                     if (e.touches[i].identifier === activeVowelTouchId) {
-                        updateVowelCoords(e.touches[i]);
-                        drawPad();
+                        handlePadMove(e.touches[i]);
                         break;
                     }
                 }
             }
         }, { passive: false });
 
-        const handleTouchEnd = (e) => {
+        const onTouchEnd = (e) => {
             if (isVowelTouching && activeVowelTouchId !== null) {
                 for (let i = 0; i < e.changedTouches.length; i++) {
                     if (e.changedTouches[i].identifier === activeVowelTouchId) {
-                        isVowelTouching = false;
                         activeVowelTouchId = null;
-                        drawPad();
+                        handlePadEnd();
                         break;
                     }
                 }
             }
         };
-        padCanvas.addEventListener('touchend', handleTouchEnd);
-        padCanvas.addEventListener('touchcancel', handleTouchEnd);
+        padCanvas.addEventListener('touchend', onTouchEnd);
+        padCanvas.addEventListener('touchcancel', onTouchEnd);
 
+        // 子音ボタンの操作
         document.querySelectorAll('.consonant-btn, .split-sub-btn').forEach(btn => {
-            btn.addEventListener('mousedown', (e) => {
-                const k = e.currentTarget.getAttribute('data-consonant');
-                if(k) triggerConsonant(k);
-            });
-            btn.addEventListener('touchstart', (e) => { 
-                e.preventDefault();
-                const k = e.currentTarget.getAttribute('data-consonant');
-                if(k) triggerConsonant(k);
-            }, { passive: false });
+            const trigger = (e) => { 
+                e.preventDefault(); 
+                const k = btn.getAttribute('data-consonant'); 
+                if(k) triggerConsonant(k); 
+            };
+            btn.addEventListener('mousedown', trigger);
+            btn.addEventListener('touchstart', trigger, { passive: false });
         });
 
+        // ボリュームスライダー
         volSlider.addEventListener('input', (e) => {
             const val = e.target.value;
             volValueEl.textContent = val + "%";
