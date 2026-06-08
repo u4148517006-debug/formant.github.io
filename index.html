@@ -1,3 +1,542 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>リアルタイム文脈補正・ストリーミング音声合成ボード</title>
+    <style>
+        body { 
+            font-family: sans-serif; 
+            background: #1e1e24; 
+            color: #fff;
+            margin: 0; 
+            padding: 0; 
+            overflow: hidden; 
+            width: 100vw; 
+            height: 100vh;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: none; 
+        }
+
+        .app-container {
+            display: grid;
+            grid-template-columns: 35% 65%; 
+            width: 100%;
+            height: 100%;
+            box-sizing: border-box;
+        }
+
+        /* 左側：コントロール＆母音エリア */
+        .left-panel {
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start; 
+            align-items: center;
+            padding: 10px 8px;
+            box-sizing: border-box;
+            border-right: 2px solid #2a2a35;
+            background: #15151a;
+            gap: 12px;
+        }
+
+        /* 2段の文字列表示ログ（母音バナーの上部空きスペースに配置） */
+        .log-container {
+            width: 100%;
+            background: #0d0d11;
+            border: 1px solid #333;
+            border-radius: 6px;
+            padding: 6px 8px;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .log-row {
+            display: flex;
+            align-items: center;
+            width: 100%;
+            overflow: hidden;
+            white-space: nowrap;
+        }
+
+        .log-label {
+            font-size: 9px;
+            color: #888;
+            width: 45px;
+            flex-shrink: 0;
+            font-weight: bold;
+        }
+
+        .log-text {
+            font-size: 12px;
+            font-weight: bold;
+            letter-spacing: 1px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        #rawLog { color: #ffcc00; }
+        #convertedLog { color: #00ffcc; }
+
+        /* スライド式音量調節コンテナ */
+        .volume-container {
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            padding: 0 4px;
+            box-sizing: border-box;
+        }
+
+        .volume-label {
+            font-size: 10px;
+            color: #ccc;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .volume-slider {
+            width: 100%;
+            -webkit-appearance: none;
+            appearance: none;
+            background: #444;
+            height: 8px;
+            border-radius: 4px;
+            outline: none;
+        }
+
+        .volume-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: #00ffcc;
+            cursor: pointer;
+        }
+
+        .pad-container {
+            width: 100%;
+            aspect-ratio: 1 / 1;
+            max-width: 240px; 
+        }
+
+        #vowelPad {
+            background: #22222b;
+            border: 2px solid #444;
+            border-radius: 12px;
+            width: 100%;
+            height: 100%;
+            touch-action: none;
+        }
+
+        /* 右側：子音ボードエリア（UI配置は完全維持） */
+        .right-panel-container {
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start; 
+            height: 100%;
+            background: #1e1e24;
+            box-sizing: border-box;
+            padding-top: 5px; 
+        }
+
+        .right-panel {
+            display: grid;
+            grid-template-rows: repeat(3, 1fr); 
+            gap: 8px;
+            padding: 0 12px;
+            height: 80%; 
+            box-sizing: border-box;
+        }
+
+        .button-row {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr); 
+            gap: 8px;
+        }
+
+        .consonant-btn {
+            background: #2e2e3a;
+            border: 1px solid #444;
+            border-radius: 8px;
+            color: #fff;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            font-weight: bold;
+            cursor: pointer;
+            touch-action: none;
+            transition: background 0.05s;
+        }
+        
+        .playable-key { border: 1px solid #00ffcc !important; }
+        .btn-index { border-bottom: 4px solid #00cc00; } 
+        .btn-middle { border-bottom: 4px solid #d4af37; } 
+        .btn-ring { border-bottom: 4px solid #007bff; } 
+        .btn-little { border-bottom: 4px solid #ff00ff; } 
+
+        .split-btn-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 4px;
+        }
+        .split-sub-btn {
+            background: #2e2e3a;
+            border: 1px solid #444;
+            border-radius: 6px;
+            color: #fff;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            font-weight: bold;
+            font-size: 14px;
+            border-bottom: 4px solid #ff00ff; 
+            box-sizing: border-box;
+        }
+
+        .consonant-btn:active, .split-sub-btn:active {
+            background: #55556b !important;
+            transform: scale(0.98);
+        }
+
+        .btn-label { font-size: 18px; }
+        .btn-sub { font-size: 10px; color: #aaa; margin-top: 2px; }
+    </style>
+</head>
+<body>
+
+<div class="app-container">
+    <div class="left-panel">
+        <!-- 🌟 母音の上の空きスペースを活用した2段文字列表示ログ（最大10文字目安サイズ） -->
+        <div class="log-container">
+            <div class="log-row">
+                <span class="log-label">リアルタイム</span>
+                <span id="rawLog" class="log-text"></span>
+            </div>
+            <div class="log-row">
+                <span class="log-label">1秒ラグ変換</span>
+                <span id="convertedLog" class="log-text"></span>
+            </div>
+        </div>
+
+        <!-- 🌟 サウンドボイスボタンを排除し、スライド式音量調節に変更 -->
+        <div class="volume-container">
+            <div class="volume-label">
+                <span>MASTER VOL</span>
+                <span id="volValue">60%</span>
+            </div>
+            <input type="range" id="volSlider" class="volume-slider" min="0" max="100" value="60">
+        </div>
+
+        <div class="pad-container">
+            <canvas id="vowelPad"></canvas>
+        </div>
+    </div>
+
+    <div class="right-panel-container">
+        <div class="right-panel">
+            <!-- 上段（変更なし） -->
+            <div class="button-row">
+                <div class="consonant-btn btn-index playable-key" data-consonant="z"><span class="btn-label">Z</span><span class="btn-sub">ざ行</span></div>
+                <div class="consonant-btn btn-middle playable-key" data-consonant="g"><span class="btn-label">G</span><span class="btn-sub">が行</span></div>
+                <div class="consonant-btn btn-ring playable-key" data-consonant="d"><span class="btn-label">D</span><span class="btn-sub">だ行</span></div>
+                <div class="split-btn-container">
+                    <div class="split-sub-btn playable-key" data-consonant="b"><span class="btn-label" style="font-size:15px;">B</span><span class="btn-sub" style="font-size:8px;">ば</span></div>
+                    <div class="split-sub-btn playable-key" data-consonant="p"><span class="btn-label" style="font-size:15px;">P</span><span class="btn-sub" style="font-size:8px;">ぱ</span></div>
+                </div>
+            </div>
+
+            <!-- 中段（変更なし） -->
+            <div class="button-row">
+                <div class="consonant-btn btn-index playable-key" data-consonant="s"><span class="btn-label">S</span><span class="btn-sub">さ行</span></div>
+                <div class="consonant-btn btn-middle playable-key" data-consonant="k"><span class="btn-label">K</span><span class="btn-sub">か行</span></div>
+                <div class="consonant-btn btn-ring playable-key" data-consonant="t"><span class="btn-label">T</span><span class="btn-sub">た行</span></div>
+                <div class="consonant-btn btn-little playable-key" data-consonant="h"><span class="btn-label">H</span><span class="btn-sub">は行</span></div>
+            </div>
+
+            <!-- 下段（変更なし） -->
+            <div class="button-row">
+                <div class="consonant-btn btn-index playable-key" data-consonant="n"><span class="btn-label">N</span><span class="btn-sub">な・ん</span></div>
+                <div class="consonant-btn btn-middle playable-key" data-consonant="m"><span class="btn-label">M</span><span class="btn-sub">ま行</span></div>
+                <div class="consonant-btn btn-ring playable-key" data-consonant="r"><span class="btn-label">R</span><span class="btn-sub">ら行</span></div>
+                <div class="consonant-btn btn-little playable-key" data-consonant="vowel_trigger"><span class="btn-label">V</span><span class="btn-sub">母音トリガ</span></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let audioCtx = null;
+    let mainGain = null;
+    let isPlaying = false;
+
+    // ストリーミング・バッファ管理
+    let inputHistory = []; // 過去3秒間の打鍵ログ [{char: 'あ', time: timestamp}, ...]
+    let rawString = "";    // 画面表示用の最新生ひらがな文字列（10文字制限）
+    
+    const vowels = [
+        { label: 'I', x: 0.23, y: 0.25, r: 0.23, color: 'rgba(0, 200, 0, 0.15)', border: '#00cc00', isVowel: true }, 
+        { label: 'E', x: 0.55, y: 0.21, r: 0.18, color: 'rgba(255, 230, 0, 0.25)', border: '#d4af37', isVowel: true }, 
+        { label: 'A', x: 0.78, y: 0.54, r: 0.22, color: 'rgba(255, 0, 0, 0.15)', border: '#ff0000', isVowel: true }, 
+        { label: 'U', x: 0.18, y: 0.67, r: 0.18, color: 'rgba(0, 0, 255, 0.15)', border: '#0000ff', isVowel: true }, 
+        { label: 'O', x: 0.46, y: 0.80, r: 0.23, color: 'rgba(255, 0, 255, 0.15)', border: '#ff00ff', isVowel: true },
+        { label: 'NN', x: 0.45, y: 0.50, r: 0.12, color: 'rgba(255, 255, 255, 0.1)', border: '#ffffff', isVowel: false } 
+    ];
+
+    // マッピングテーブル（簡易判定用）
+    const romajiMap = {
+        'A':'あ','I':'い','U':'う','E':'え','O':'お',
+        'KA':'か','KI':'き','KU':'く','KE':'け','KO':'こ',
+        'SA':'さ','SI':'し','SU':'す','SE':'せ','SO':'そ',
+        'TA':'た','TI':'ち','TU':'つ','TE':'て','TO':'と',
+        'NA':'な','NI':'に','NU':'ぬ','NE':'ね','NO':'の',
+        'HA':'は','HI':'ひ','HU':'ふ','HE':'へ','HO':'ほ',
+        'MA':'ま','MI':'み','MU':'む','ME':'め','MO':'も',
+        'RA':'ら','RI':'り','RU':'る','RE':'れ','RO':'ろ',
+        'GA':'が','GI':'ぎ','GU':'ぐ','GE':'げ','GO':'ご',
+        'ZA':'ざ','ZI':'じ','ZU':'ず','ZE':'ぜ','ZO':'ぞ',
+        'DA':'だ','DI':'ぢ','DU':'づ','DE':'で','DO':'ど',
+        'BA':'ば','BI':'び','BU':'ぶ','BE':'べ','BO':'ぼ',
+        'PA':'ぱ','PI':'ぴ','PU':'ぷ','PE':'ぺ','PO':'ぽ'
+    };
+
+    let currentX = 0.5;
+    let currentY = 0.5;
+    let isVowelTouching = false; 
+    let activeVowelTouchId = null; 
+
+    const padCanvas = document.getElementById('vowelPad');
+    const padCtx = padCanvas.getContext('2d');
+    const rawLogEl = document.getElementById('rawLog');
+    const convertedLogEl = document.getElementById('convertedLog');
+    const volSlider = document.getElementById('volSlider');
+    const volValueEl = document.getElementById('volValue');
+
+    function initAudio() {
+        if (!audioCtx) {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            mainGain = audioCtx.createGain();
+            mainGain.gain.value = parseFloat(volSlider.value) / 100;
+            mainGain.connect(audioCtx.destination);
+            isPlaying = true;
+            
+            // 🌟 1秒ごとの定期ストリーミングスキャン処理の起動
+            setInterval(processStreamingBuffer, 1000);
+        }
+    }
+
+    // 🌟 核心ロジック：1秒ごとに過去3秒の文脈を送り、得られた音声の1秒分を切り出すシミュレーション
+    async function processStreamingBuffer() {
+        if (!isPlaying) return;
+
+        const now = Date.now();
+        // 過去3秒間のデータのみにフィルタリング（スライディング・ウィンドウ）
+        inputHistory = inputHistory.filter(item => now - item.time <= 3000);
+
+        if (inputHistory.length === 0) return;
+
+        // 過去3秒分のひらがな文字列を生成
+        const past3SecString = inputHistory.map(item => item.char).join('');
+        console.log(`【API送信】過去3秒の文脈: "${past3SecString}"`);
+
+        try {
+            /* [将来の拡張ポイント]
+               ここで Google CGI Input API（かな漢字変換）および Cloud Text-to-Speech API へリクエストを送信。
+               1. FetchでGoogle IMEを叩き、文脈補正されたテキストを取得。
+               2. そのテキストをGoogle TTSへ送り、タイムスタンプ付きの滑らかな音声バイナリを受信。
+            */
+
+            // 現段階ではモック処理として、1秒後に変換ログを10文字以内で同期表示
+            setTimeout(() => {
+                // 文脈を解析して変換したかのようなテキストをシミュレート
+                let mockConverted = past3SecString;
+                if(mockConverted.length > 10) {
+                    mockConverted = "…" + mockConverted.slice(-9);
+                }
+                convertedLogEl.textContent = mockConverted;
+
+                // 🌟 音声の切り出し再生処理のシミュレーション
+                // Google TTSから戻った音声データの「最新1秒（音節の切れ目）」をトリミングしてWeb Audio APIで滑らかに発音
+                playStreamedSlice();
+            }, 200);
+
+        } catch (e) {
+            console.error("API連携エラー:", e);
+        }
+    }
+
+    function playStreamedSlice() {
+        if (!audioCtx) return;
+        // 将来的にここでGoogle TTSのタイムスタンプ情報（TimeStamps）を読み込み、
+        // 助詞（は、が、を）などの音節の切れ目に最も近いタイミング（約1秒間）を計算して再生。
+        console.log("-> Googleから取得した音声の最新1秒（適切な音節区切り）を贅沢にトリミングして再生。");
+    }
+
+    // 現在の左手の座標から最も近い母音の文字を取得
+    function getCurrentVowelLabel() {
+        const nnTarget = vowels.find(v => v.label === 'NN');
+        const dxNN = currentX - nnTarget.x;
+        const dyNN = currentY - nnTarget.y;
+        if (Math.sqrt(dxNN*dxNN + dyNN*dyNN) <= nnTarget.r) {
+            return 'ん';
+        }
+
+        const pureVowels = vowels.filter(v => v.isVowel); 
+        let maxWeight = -1, targetLabel = 'A';
+        pureVowels.forEach(v => {
+            const distance = Math.sqrt(Math.pow(currentX - v.x, 2) + Math.pow(currentY - v.y, 2));
+            const weight = distance === 0 ? 999999 : 1 / Math.pow(distance, 2);
+            if (weight > maxWeight) { maxWeight = weight; targetLabel = v.label; }
+        });
+        return targetLabel;
+    }
+
+    // 右手ボタンが叩かれた時の処理（UIトリガー）
+    function triggerConsonant(consonantKey) {
+        initAudio();
+
+        let pressedChar = "";
+        const currentVowel = getCurrentVowelLabel();
+
+        if (consonantKey === 'vowel_trigger') {
+            // 母音単打
+            pressedChar = currentVowel === 'ん' ? 'ん' : romajiMap[currentVowel];
+        } else {
+            // 子音＋母音の結合
+            if (currentVowel === 'ん') {
+                pressedChar = romajiMap[consonantKey.toUpperCase() + 'A'] + 'ん';
+            } else {
+                const romaji = consonantKey.toUpperCase() + currentVowel;
+                pressedChar = romajiMap[romaji] || "";
+            }
+        }
+
+        if (pressedChar) {
+            // 履歴にタイムスタンプ付きで保存（過去3秒の計算用）
+            inputHistory.push({ char: pressedChar, time: Date.now() });
+
+            // 🌟 リアルタイム生ログ（ラグなし）の更新表示（最新10文字をキープ）
+            rawString += pressedChar;
+            if (rawString.length > 10) {
+                rawString = rawString.slice(-10);
+            }
+            rawLogEl.textContent = rawString;
+        }
+    }
+
+    // --- UI制御・イベント処理 ---
+    function resizePad() {
+        padCanvas.width = padCanvas.clientWidth;
+        padCanvas.height = padCanvas.clientHeight;
+        drawPad();
+    }
+    window.addEventListener('resize', resizePad);
+
+    function drawPad() {
+        const w = padCanvas.width, h = padCanvas.height;
+        if (!w || !h) return;
+        padCtx.clearRect(0, 0, w, h);
+
+        vowels.forEach(v => {
+            const cx = v.x * w, cy = v.y * h, radius = v.r * w;
+            padCtx.fillStyle = v.color;
+            padCtx.strokeStyle = v.border;
+            padCtx.lineWidth = v.isVowel ? 1.5 : 2.5; 
+            padCtx.beginPath();
+            padCtx.arc(cx, cy, radius, 0, 2 * Math.PI);
+            padCtx.fill();
+            padCtx.stroke();
+
+            padCtx.fillStyle = '#fff';
+            padCtx.font = v.isVowel ? 'bold 14px sans-serif' : 'bold 11px sans-serif'; 
+            padCtx.textAlign = 'center';
+            padCtx.textBaseline = 'middle';
+            padCtx.fillText(v.label, cx, cy);
+        });
+
+        const px = currentX * w, py = currentY * h;
+        padCtx.strokeStyle = '#fff'; padCtx.lineWidth = 2;
+        padCtx.beginPath(); padCtx.arc(px, py, 6, 0, 2 * Math.PI);
+        padCtx.fillStyle = isVowelTouching ? '#007bff' : 'rgba(255,255,255,0.2)';
+        padCtx.fill(); padCtx.stroke();
+    }
+
+    function updateVowelCoords(touchOrEvent) {
+        const rect = padCanvas.getBoundingClientRect();
+        currentX = Math.max(0, Math.min(1, (touchOrEvent.clientX - rect.left) / rect.width));
+        currentY = Math.max(0, Math.min(1, (touchOrEvent.clientY - rect.top) / rect.height));
+    }
+
+    function setupInputEvents() {
+        // マウス
+        padCanvas.addEventListener('mousedown', (e) => {
+            isVowelTouching = true;
+            updateVowelCoords(e);
+            drawPad();
+        });
+        window.addEventListener('mousemove', (e) => {
+            if (isVowelTouching && activeVowelTouchId === null) {
+                updateVowelCoords(e);
+                drawPad(); 
+            }
+        });
+        window.addEventListener('mouseup', () => {
+            if (activeVowelTouchId === null) {
+                isVowelTouching = false;
+                drawPad();
+            }
+        });
+
+        // タッチパネル
+        padCanvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            if (!isVowelTouching) {
+                const touch = e.changedTouches[0];
+                activeVowelTouchId = touch.identifier;
+                isVowelTouching = true;
+                updateVowelCoords(touch);
+                drawPad();
+            }
+        }, { passive: false });
+
+        padCanvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            if (isVowelTouching && activeVowelTouchId !== null) {
+                for (let i = 0; i < e.touches.length; i++) {
+                    if (e.touches[i].identifier === activeVowelTouchId) {
+                        updateVowelCoords(e.touches[i]);
+                        drawPad();
+                        break;
+                    }
+                }
+            }
+        }, { passive: false });
+
+        const handleTouchEnd = (e) => {
+            if (isVowelTouching && activeVowelTouchId !== null) {
+                for (let i = 0; i < e.changedTouches.length; i++) {
+                    if (e.changedTouches[i].identifier === activeVowelTouchId) {
+                        isVowelTouching = false;
+                        activeVowelTouchId = null;
+                        drawPad();
+                        break;
+                    }
+                }
+            }
+        };
+        padCanvas.addEventListener('touchend', handleTouchEnd);
+        padCanvas.addEventListener('touchcancel', handleTouchEnd);
+
+        // 子音・母音トリガーボタンの打鍵
+        const buttonTrigger = (el) => {
+            const cKey = el.getAttribute('data-consonant');
+            if (cKey) triggerConsonant(cKey);
+        };
 
         document.querySelectorAll('.consonant-btn, .split-sub-btn').forEach(btn => {
             btn.addEventListener('mousedown', (e) => buttonTrigger(e.currentTarget));
