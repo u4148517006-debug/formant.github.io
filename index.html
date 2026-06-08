@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>5秒タイマー連動型・音声引き伸ばし合成ボード</title>
+    <title>5秒タイマー連動型・音声引き伸ばし合成ボード（縦型音量フェーダー＆レイアウト最適化版）</title>
     <style>
         body { 
             font-family: sans-serif; 
@@ -21,12 +21,18 @@
 
         .app-container {
             display: grid;
-            grid-template-columns: 35% 65%; 
+            /* 🌟 レイアウト比率の再分配
+               左パネル（ログ＋母音パネル）：35% + 5% = 40%
+               中央パネル（縦型音量フェーダー）：5%
+               右パネル（子音ボタン）：65% -> 55%
+            */
+            grid-template-columns: 40% 5% 55%; 
             width: 100%;
             height: 100%;
             box-sizing: border-box;
         }
 
+        /* --- 左パネル（母音＋ログ） --- */
         .left-panel {
             display: flex;
             flex-direction: column;
@@ -34,9 +40,10 @@
             align-items: center;
             padding: 10px 8px;
             box-sizing: border-box;
-            border-right: 2px solid #2a2a35;
+            border-right: 1px solid #2a2a35;
             background: #15151a;
             gap: 12px;
+            height: 100%;
         }
 
         .log-container {
@@ -79,46 +86,13 @@
         #rawLog { color: #ffcc00; }
         #convertedLog { color: #00ffcc; }
 
-        .volume-container {
-            width: 100%;
-            display: flex;
-            flex-direction: column;
-            gap: 4px;
-            padding: 0 4px;
-            box-sizing: border-box;
-        }
-
-        .volume-label {
-            font-size: 10px;
-            color: #ccc;
-            display: flex;
-            justify-content: space-between;
-        }
-
-        .volume-slider {
-            width: 100%;
-            -webkit-appearance: none;
-            appearance: none;
-            background: #444;
-            height: 8px;
-            border-radius: 4px;
-            outline: none;
-        }
-
-        .volume-slider::-webkit-slider-thumb {
-            -webkit-appearance: none;
-            appearance: none;
-            width: 18px;
-            height: 18px;
-            border-radius: 50%;
-            background: #00ffcc;
-            cursor: pointer;
-        }
-
+        /* 🌟 5%拡張された母音パネルのコンテナ */
         .pad-container {
             width: 100%;
-            aspect-ratio: 1 / 1;
-            max-width: 240px; 
+            flex-grow: 1; /* 縦方向にもスペースを最大限活用 */
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
 
         #vowelPad {
@@ -127,32 +101,99 @@
             border-radius: 12px;
             width: 100%;
             height: 100%;
+            max-height: 85vh; /* ログの隙間を埋めるように大きく配置 */
             touch-action: none;
         }
 
+        /* --- 🌟 中央パネル（縦型音量フェーダー） --- */
+        .middle-volume-panel {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: #191920;
+            border-right: 1px solid #2a2a35;
+            padding: 15px 0;
+            box-sizing: border-box;
+            height: 100%;
+        }
+
+        .volume-label-vertical {
+            font-size: 9px;
+            color: #ccc;
+            font-weight: bold;
+            text-align: center;
+            margin-bottom: 10px;
+            writing-mode: vertical-rl; /* 縦書きでスマートに配置 */
+            text-orientation: mixed;
+            letter-spacing: 1px;
+        }
+
+        .slider-wrapper {
+            flex-grow: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+            width: 100%;
+        }
+
+        /* 縦型レンジスライダーのスタイリング */
+        .volume-slider-vertical {
+            -webkit-appearance: none;
+            appearance: none;
+            transform: rotate(-90deg); /* 反時計回りに90度回転して縦型化 */
+            background: #333;
+            height: 8px;
+            width: 60vh; /* 画面縦幅基準で長さを均等確保 */
+            border-radius: 4px;
+            outline: none;
+            position: absolute;
+            cursor: pointer;
+        }
+
+        .volume-slider-vertical::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            background: #ff3366; /* 3倍ブースト可能なので警告・熱血をイメージした赤ピンク系アクセント */
+            box-shadow: 0 0 8px rgba(255, 51, 102, 0.6);
+            cursor: pointer;
+        }
+
+        #volValue {
+            font-size: 10px;
+            font-weight: bold;
+            color: #ff3366;
+            margin-top: 10px;
+            text-align: center;
+        }
+
+        /* --- 右パネル（子音ボタン：55%に集約化） --- */
         .right-panel-container {
             display: flex;
             flex-direction: column;
-            justify-content: flex-start; 
+            justify-content: center; 
             height: 100%;
             background: #1e1e24;
             box-sizing: border-box;
-            padding-top: 5px; 
+            padding: 10px; 
         }
 
         .right-panel {
             display: grid;
             grid-template-rows: repeat(3, 1fr); 
-            gap: 8px;
-            padding: 0 12px;
-            height: 80%; 
+            gap: 10px;
+            height: 90%; 
             box-sizing: border-box;
         }
 
         .button-row {
             display: grid;
             grid-template-columns: repeat(4, 1fr); 
-            gap: 8px;
+            gap: 10px;
         }
 
         .consonant-btn {
@@ -208,6 +249,7 @@
 <body>
 
 <div class="app-container">
+    <!-- 左パネル（母音パネルを5%拡大） -->
     <div class="left-panel">
         <div class="log-container">
             <div class="log-row">
@@ -220,19 +262,21 @@
             </div>
         </div>
 
-        <div class="volume-container">
-            <div class="volume-label">
-                <span>MASTER VOL</span>
-                <span id="volValue">60%</span>
-            </div>
-            <input type="range" id="volSlider" class="volume-slider" min="0" max="100" value="60">
-        </div>
-
         <div class="pad-container">
             <canvas id="vowelPad"></canvas>
         </div>
     </div>
 
+    <!-- 🌟 中央パネル（横幅5%の縦型音量フェーダーエリア） -->
+    <div class="middle-volume-panel">
+        <div class="volume-label-vertical">VOLUME BOOST</div>
+        <div class="slider-wrapper">
+            <input type="range" id="volSlider" class="volume-slider-vertical" min="0" max="300" value="100">
+        </div>
+        <div id="volValue">100%</div>
+    </div>
+
+    <!-- 右パネル（65%から55%に凝縮し、右側にまとめて配置） -->
     <div class="right-panel-container">
         <div class="right-panel">
             <div class="button-row">
@@ -270,7 +314,7 @@
     // ストリーミング・バッファ
     let rawHistoryArray = [];      
     let lastProcessedIndex = 0;    
-    let activeTimerId = null;      // 🌟 動的タイマー管理用の変数
+    let activeTimerId = null;      
     
     const vowels = [
         { label: 'I', x: 0.23, y: 0.25, r: 0.23, color: 'rgba(0, 200, 0, 0.15)', border: '#00cc00', isVowel: true }, 
@@ -291,7 +335,7 @@
         'MA':'ま','MI':'み','MU':'む','ME':'め','MO':'も',
         'RA':'ら','RI':'り','RU':'る','RE':'れ','RO':'ろ',
         'GA':'が','GI':'ぎ','GU':'ぐ','GE':'げ','GO':'ご',
-        'ZA':'ざ','ZI':'じ','ZO':'ぞ','ZU':'ず','ZE':'ぜ','ZO':'ぞ',
+        'ZA':'ざ','ZI':'じ','ZO':'ず','ZE':'ぜ','ZO':'ぞ',
         'DA':'だ','DI':'ぢ','DU':'づ','DE':'で','DO':'ど',
         'BA':'ば','BI':'び','BU':'ぶ','BE':'べ','BO':'ぼ',
         'PA':'ぱ','PI':'ぴ','PU':'ぷ','PE':'ぺ','PO':'ぽ'
@@ -326,35 +370,28 @@
         if (!audioCtx) {
             audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             mainGain = audioCtx.createGain();
+            // 🌟 100% = 1.0のゲインにマッピング
             mainGain.gain.value = parseFloat(volSlider.value) / 100;
             mainGain.connect(audioCtx.destination);
             isPlaying = true;
-            // 🌟 起動時は自動タイマーを回さない（完全待機状態）
         }
     }
 
-    // 🌟 キーが押された瞬間に初めて起動する動的5秒タイマー制御
     function startOnDemandTimer() {
         if (!isPlaying) return;
-        
-        // すでにカウントダウン中のタイマーがあれば二重起動を防ぐために一旦スルー
         if (activeTimerId !== null) return;
 
         console.log("【タイマー始動】最初のキーが叩かれたので5秒のカウントを開始しますお！");
         
         activeTimerId = setTimeout(async () => {
-            // 5秒経過したので処理を実行
             await processStreamingBuffer();
-            
-            // 🌟 処理が終わったらタイマーIDを完全にクリアし、次の打鍵を待つ「スリープ状態」へ戻す
             activeTimerId = null;
-            console.log("【タイマー終了】待機状態に戻りました。次のキー入力を待っています。");
+            console.log("【タイマー終了】待機状態に戻りました。");
         }, 5000);
     }
 
     async function processStreamingBuffer() {
         const fullString = rawHistoryArray.join('');
-        // 何も打たれていなければ処理を中断（バッファが空ならスリープ維持）
         if (!fullString) return;
 
         const newDiffString = rawHistoryArray.slice(lastProcessedIndex).join('');
@@ -392,7 +429,6 @@
             }
             convertedLogEl.textContent = finalConvertedText;
 
-            // 🌟【音声出力】差分の文字数に合わせて、5秒間にびっちり引き伸ばすスローマジック
             if (newDiffString) {
                 let audioText = newDiffString;
                 fuzzyRules.forEach(rule => {
@@ -406,7 +442,6 @@
         }
     }
 
-    // 🌟 文字数に合わせて自動計算し、極力5秒間に引き伸ばして喋らせる関数
     function playStreamedSliceWithStretch(textToSpeak) {
         if (!textToSpeak) return;
         window.speechSynthesis.cancel();
@@ -414,22 +449,21 @@
         const utterance = new SpeechSynthesisUtterance(textToSpeak);
         utterance.lang = 'ja-JP';
 
-        // 通常、日本語は1文字あたり約0.2秒〜0.3秒で発音されます。
-        // 5秒タイマーに合わせるため、「5秒 ÷ 文字数」で1文字あたりの目標秒数を出し、それに合わせて発話速度(rate)を動的に超スロー化します。
         const charCount = textToSpeak.length;
-        
-        // 基準値：1文字の標準発話時間を0.25秒とした場合
-        // 例：2文字なら標準で0.5秒。それを5秒にするには「0.5 ÷ 5 = 0.1倍速」にする
         let targetRate = (charCount * 0.28) / 5.0;
 
-        // Web Speech APIの仕様上の限界値（0.1倍速 〜 2.0倍速）にクリップする
         if (targetRate < 0.1) targetRate = 0.1;
-        if (targetRate > 1.2) targetRate = 1.1; // あまりに文字数が多いときは滑らかさを優先
+        if (targetRate > 1.2) targetRate = 1.1; 
 
         utterance.rate = targetRate; 
-        utterance.pitch = 0.95; // 少しだけピッチを下げるとスロー時にもロボット感が減ってアンビエントになります
+        utterance.pitch = 0.95; 
 
-        console.log(`【音声引き伸ばし発動】文字数: ${charCount} -> 計算された発話速度(rate): ${targetRate.toFixed(2)}倍速`);
+        // 🌟 Web Speech API自体にはボリューム増幅(1.0超)がないため、
+        // 3倍ブーストに対応したAudioContextのmainGainに音声を流し込むために
+        // スライダーの数値をそのまま音声にも適用（または全体のマスターゲインで制御）
+        utterance.volume = Math.min(1.0, parseFloat(volSlider.value) / 100);
+
+        console.log(`【音声引き伸ばし】文字数: ${charCount} -> 速度: ${targetRate.toFixed(2)}倍速`);
         window.speechSynthesis.speak(utterance);
     }
 
@@ -453,8 +487,6 @@
 
     function triggerConsonant(consonantKey) {
         initAudio();
-        
-        // 🌟 キーが押されたので、タイマーが止まっていればここから5秒カウントをオンデマンドで始動！
         startOnDemandTimer();
 
         let pressedChar = "";
@@ -597,6 +629,7 @@
             }, { passive: false });
         });
 
+        // 🌟 縦型フェーダーの値をマスターゲイン（最大3倍 = 3.0）にリアルタイム反映
         volSlider.addEventListener('input', (e) => {
             const val = e.target.value;
             volValueEl.textContent = val + "%";
