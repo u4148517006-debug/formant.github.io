@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>5秒ストリーミング音声合成ボード</title>
+    <title>5秒ストリーミングポイント制御音声合成ボード</title>
     <style>
         body { 
             font-family: sans-serif; 
@@ -67,7 +67,6 @@
             font-weight: bold;
         }
 
-        /* 🌟 フォントサイズを少しだけ最適化し、10文字が潰れずに1行に綺麗に収まるよう調整 */
         .log-text {
             font-size: 11px;
             font-weight: bold;
@@ -268,8 +267,9 @@
     let mainGain = null;
     let isPlaying = false;
 
-    // ストリーミング・バッファ管理
-    let rawString = ""; // 画面上の最新生ひらがな文字列（最大10文字キープ）
+    // ストリーミング・バッファ配列
+    let rawHistoryArray = [];      // 叩かれた全ひらがなをタイムスタンプ等なしでピュアに溜める配列
+    let lastProcessedIndex = 0;    // 🌟 音声出力用の「前回のポイント（印）」を記録するポインタ
     
     const vowels = [
         { label: 'I', x: 0.23, y: 0.25, r: 0.23, color: 'rgba(0, 200, 0, 0.15)', border: '#00cc00', isVowel: true }, 
@@ -290,7 +290,7 @@
         'MA':'ま','MI':'み','MU':'む','ME':'め','MO':'も',
         'RA':'ら','RI':'り','RU':'る','RE':'れ','RO':'ろ',
         'GA':'が','GI':'ぎ','GU':'ぐ','GE':'げ','GO':'ご',
-        'ZA':'ざ','ZI':'じ','ZU':'ず','ZE':'ぜ','ZO':'ぞ',
+        'ZA':'ざ','ZI':'じ','ZU':'づ','ZE':'ぜ','ZO':'ぞ',
         'DA':'だ','DI':'ぢ','DU':'づ','DE':'で','DO':'ど',
         'BA':'ば','BI':'び','BU':'ぶ','BE':'べ','BO':'ぼ',
         'PA':'ぱ','PI':'ぴ','PU':'ぷ','PE':'ぺ','PO':'ぽ'
@@ -316,25 +316,29 @@
             mainGain.connect(audioCtx.destination);
             isPlaying = true;
             
-            // 🌟 5秒ごとの定期スキャンタイマーにリ戻し
+            // 🌟 5秒ごとの定期スキャンタイマー
             setInterval(processStreamingBuffer, 5000);
         }
     }
 
-    // 🌟 5秒ごとに、今見えている生文字列（最大10文字）を丸ごと一撃で漢字変換して読み上げる
+    // 🌟 設計書通りのコアロジック：文字起こしは過去を反映、音声は差分のポイント間だけを出力
     async function processStreamingBuffer() {
         if (!isPlaying) return;
 
-        // 今リアルタイム欄に出ている文字をそのまま取得
-        const targetString = rawString;
+        // 1. 配列にあるすべての生文字列を結合して全体像（最大10文字枠）を取得
+        const fullString = rawHistoryArray.join('');
+        if (!fullString) return;
 
-        // 何も打たれていなければ何もしない
-        if (!targetString) return;
+        // 2. 🌟【音声化用の差分抽出】 前回のポイントから、今回の最新の端っこまでをスライス！
+        const newDiffString = rawHistoryArray.slice(lastProcessedIndex).join('');
 
-        console.log(`【5秒スキャン作動】現在の最新生文字列（10文字枠）をそのまま送信: "${targetString}"`);
+        // 3. 🌟 次回の5秒後のために、現在の配列の長さを「新しいポイント」として更新して印をつける
+        lastProcessedIndex = rawHistoryArray.length;
 
-        // Googleの日本語入力APIにそのまま丸投げ
-        const apiUrl = `https://www.google.com/transliterate?langpair=ja-Hira|ja&text=${encodeURIComponent(targetString)}`;
+        console.log(`【5秒スキャン作端】IME用全体: "${fullString}" / TTS用差分: "${newDiffString}"`);
+
+        // 4. 文字起こし化（Google IME）：過去の文字も含めた全体を送ることで、完璧な文脈の漢字に起こす
+        const apiUrl = `https://www.google.com/transliterate?langpair=ja-Hira|ja&text=${encodeURIComponent(fullString)}`;
 
         try {
             const response = await fetch(apiUrl);
@@ -343,30 +347,32 @@
             const data = await response.json();
             let convertedResult = data.map(word => word[1][0]).join('');
 
-            // 🌟 下段の変換ログにも、ケチらず最新の10文字を綺麗にそのまま代入！
+            // 下段の「変換ログ」に最新10文字枠をしっかり維持して反映
             if (convertedResult.length > 10) {
-                convertedResult = convertedResult.slice(-10); // 10文字を超える場合は最新の末尾10文字を残す
+                convertedResult = convertedResult.slice(-10);
             }
             convertedLogEl.textContent = convertedResult;
 
-            // 🌟 変換後のテキストを、その文字数の長さ（秒数）分だけ流暢に読み上げる
-            playStreamedSlice(convertedResult);
+            // 5. 🌟【音声出力】全体の文字起こしとは裏側で切り離し、この5秒間で新しく増えた「差分文字列」だけを安全に喋らせる！
+            if (newDiffString) {
+                playStreamedSlice(newDiffString);
+            }
 
         } catch (e) {
             console.warn("Google変換API通信エラー:", e);
         }
     }
 
-    // 🌟 変換後のテキストを、ぶつ切りにせずその文字数の秒数分だけ自然に喋らせる
+    // 差分テキストの長さ分だけ音声を出力
     function playStreamedSlice(textToSpeak) {
         if (!textToSpeak) return;
 
-        // 新しい声を出す前に、前の音声が残っていれば即座にクリア
+        // 新しい差分を喋る前に、前の音声の残響をクリア
         window.speechSynthesis.cancel();
 
         const utterance = new SpeechSynthesisUtterance(textToSpeak);
         utterance.lang = 'ja-JP';
-        utterance.rate = 1.1; // わずかに滑らかで聴き取りやすいスピード
+        utterance.rate = 1.1; 
         utterance.pitch = 1.0;
 
         window.speechSynthesis.speak(utterance);
@@ -408,12 +414,21 @@
         }
 
         if (pressedChar) {
-            rawString += pressedChar;
-            // リアルタイム表示を常に最新10文字に制限
-            if (rawString.length > 10) {
-                rawString = rawString.slice(-10);
+            // ピュアな履歴配列に文字を追加
+            rawHistoryArray.push(pressedChar);
+
+            // 🌟 履歴が肥大化しすぎないよう、表示上の制限に合わせて最大20文字程度で古いポインタごとトリミング（バッファのオーバーフロー防止）
+            if (rawHistoryArray.length > 20) {
+                rawHistoryArray.shift();
+                lastProcessedIndex = Math.max(0, lastProcessedIndex - 1);
             }
-            rawLogEl.textContent = rawString;
+
+            // リアルタイム表示を組み立てて更新（最新10文字枠）
+            let displayRaw = rawHistoryArray.join('');
+            if (displayRaw.length > 10) {
+                displayRaw = displayRaw.slice(-10);
+            }
+            rawLogEl.textContent = displayRaw;
         }
     }
 
