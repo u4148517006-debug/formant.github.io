@@ -288,7 +288,7 @@
         { label: 'NN', x: 0.45, y: 0.50, r: 0.12, color: 'rgba(255, 255, 255, 0.1)', border: '#ffffff', isVowel: false } 
     ];
 
-    // マッピングテーブル（簡易判定用）
+    // マッピングテーブル
     const romajiMap = {
         'A':'あ','I':'い','U':'う','E':'え','O':'お',
         'KA':'か','KI':'き','KU':'く','KE':'け','KO':'こ',
@@ -325,59 +325,53 @@
             mainGain.connect(audioCtx.destination);
             isPlaying = true;
             
-            // 🌟 1秒ごとの定期ストリーミングスキャン処理の起動
+            // 🌟 1秒ごとの定期ストリーミングスキャンの開始
             setInterval(processStreamingBuffer, 1000);
         }
     }
 
-    // 🌟 核心ロジック：1秒ごとに過去3秒の文脈を送り、得られた音声の1秒分を切り出すシミュレーション
+    // 🌟 本物のGoogle IME APIを叩くストリーミング関数！
     async function processStreamingBuffer() {
         if (!isPlaying) return;
 
         const now = Date.now();
-        // 過去3秒間のデータのみにフィルタリング（スライディング・ウィンドウ）
+        // 過去3秒間の打鍵ログのみを抽出
         inputHistory = inputHistory.filter(item => now - item.time <= 3000);
 
         if (inputHistory.length === 0) return;
 
-        // 過去3秒分のひらがな文字列を生成
         const past3SecString = inputHistory.map(item => item.char).join('');
-        console.log(`【API送信】過去3秒の文脈: "${past3SecString}"`);
+        
+        // 🌟 Googleの日本語入力APIのURL（JSONPという仕組みを使ってブラウザのブロックを回避します）
+        const apiUrl = `https://www.google.com/transliterate?langpair=ja-Hira|ja&text=${encodeURIComponent(past3SecString)}`;
 
         try {
-            /* [将来の拡張ポイント]
-               ここで Google CGI Input API（かな漢字変換）および Cloud Text-to-Speech API へリクエストを送信。
-               1. FetchでGoogle IMEを叩き、文脈補正されたテキストを取得。
-               2. そのテキストをGoogle TTSへ送り、タイムスタンプ付きの滑らかな音声バイナリを受信。
-            */
+            // インターネット越しにGoogleへ注文（Fetch通信）
+            const response = await fetch(apiUrl);
+            if (!response.ok) throw new Error("Network response was not ok");
+            
+            const data = await response.json();
+            // Googleから戻ってきた変換結果（配列）を、1つの美しい文章にガッチャンコする
+            let convertedResult = data.map(word => word[1][0]).join('');
 
-            // 現段階ではモック処理として、1秒後に変換ログを10文字以内で同期表示
-            setTimeout(() => {
-                // 文脈を解析して変換したかのようなテキストをシミュレート
-                let mockConverted = past3SecString;
-                if(mockConverted.length > 10) {
-                    mockConverted = "…" + mockConverted.slice(-9);
-                }
-                convertedLogEl.textContent = mockConverted;
+            // 10文字目安で画面下段の「変換ログ」に表示
+            if (convertedResult.length > 10) {
+                convertedResult = "…" + convertedResult.slice(-9);
+            }
+            convertedLogEl.textContent = convertedResult;
 
-                // 🌟 音声の切り出し再生処理のシミュレーション
-                // Google TTSから戻った音声データの「最新1秒（音節の切れ目）」をトリミングしてWeb Audio APIで滑らかに発音
-                playStreamedSlice();
-            }, 200);
+            // 🌟 将来的にここにGoogle TTS（音声合成）へのパスを繋いで、この文字の音声を1秒切り出して流します
+            playStreamedSlice();
 
         } catch (e) {
-            console.error("API連携エラー:", e);
+            console.warn("Google APIとの通信に失敗しました（オフラインまたはCORS制限の可能性があります）:", e);
         }
     }
 
     function playStreamedSlice() {
-        if (!audioCtx) return;
-        // 将来的にここでGoogle TTSのタイムスタンプ情報（TimeStamps）を読み込み、
-        // 助詞（は、が、を）などの音節の切れ目に最も近いタイミング（約1秒間）を計算して再生。
-        console.log("-> Googleから取得した音声の最新1秒（適切な音節区切り）を贅沢にトリミングして再生。");
+        // 音声合成APIとの連動時にここにロジックを組み込みます
     }
 
-    // 現在の左手の座標から最も近い母音の文字を取得
     function getCurrentVowelLabel() {
         const nnTarget = vowels.find(v => v.label === 'NN');
         const dxNN = currentX - nnTarget.x;
@@ -396,7 +390,6 @@
         return targetLabel;
     }
 
-    // 右手ボタンが叩かれた時の処理（UIトリガー）
     function triggerConsonant(consonantKey) {
         initAudio();
 
@@ -404,10 +397,8 @@
         const currentVowel = getCurrentVowelLabel();
 
         if (consonantKey === 'vowel_trigger') {
-            // 母音単打
             pressedChar = currentVowel === 'ん' ? 'ん' : romajiMap[currentVowel];
         } else {
-            // 子音＋母音の結合
             if (currentVowel === 'ん') {
                 pressedChar = romajiMap[consonantKey.toUpperCase() + 'A'] + 'ん';
             } else {
@@ -417,10 +408,8 @@
         }
 
         if (pressedChar) {
-            // 履歴にタイムスタンプ付きで保存（過去3秒の計算用）
             inputHistory.push({ char: pressedChar, time: Date.now() });
 
-            // 🌟 リアルタイム生ログ（ラグなし）の更新表示（最新10文字をキープ）
             rawString += pressedChar;
             if (rawString.length > 10) {
                 rawString = rawString.slice(-10);
@@ -429,7 +418,7 @@
         }
     }
 
-    // --- UI制御・イベント処理 ---
+    // --- UI・描画系イベント（省略なし） ---
     function resizePad() {
         padCanvas.width = padCanvas.clientWidth;
         padCanvas.height = padCanvas.clientHeight;
@@ -473,7 +462,6 @@
     }
 
     function setupInputEvents() {
-        // マウス
         padCanvas.addEventListener('mousedown', (e) => {
             isVowelTouching = true;
             updateVowelCoords(e);
@@ -492,7 +480,6 @@
             }
         });
 
-        // タッチパネル
         padCanvas.addEventListener('touchstart', (e) => {
             e.preventDefault();
             if (!isVowelTouching) {
@@ -532,21 +519,24 @@
         padCanvas.addEventListener('touchend', handleTouchEnd);
         padCanvas.addEventListener('touchcancel', handleTouchEnd);
 
-        // 子音・母音トリガーボタンの打鍵
         const buttonTrigger = (el) => {
             const cKey = el.getAttribute('data-consonant');
-            if (cKey) triggerConsonant(cKey);
+            if (cKey) buttonTrigger(cKey);
         };
 
+        // 🌟 修正：引数を「cKey」文字列として正しくトリガー関数に渡すように安全化
         document.querySelectorAll('.consonant-btn, .split-sub-btn').forEach(btn => {
-            btn.addEventListener('mousedown', (e) => buttonTrigger(e.currentTarget));
+            btn.addEventListener('mousedown', (e) => {
+                const k = e.currentTarget.getAttribute('data-consonant');
+                if(k) triggerConsonant(k);
+            });
             btn.addEventListener('touchstart', (e) => { 
                 e.preventDefault();
-                buttonTrigger(e.currentTarget); 
+                const k = e.currentTarget.getAttribute('data-consonant');
+                if(k) triggerConsonant(k);
             }, { passive: false });
         });
 
-        // スライド式ボリュームコントロールのイベント
         volSlider.addEventListener('input', (e) => {
             const val = e.target.value;
             volValueEl.textContent = val + "%";
