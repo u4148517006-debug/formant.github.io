@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>5秒タイマー連動型・音声合成ボード（スマホ完全最適化版）</title>
+    <title>5秒タイマー連動型・音声合成ボード（下部10%セーフエリア確保版）</title>
     <style>
         body { 
             font-family: sans-serif; 
@@ -12,16 +12,17 @@
             margin: 0; 
             padding: 0; 
             overflow: hidden; 
-            width: 100vw; 
+            /* スマホの画面高さを正確に取得（非対応ブラウザ用に100vhも残す） */
             height: 100vh;
+            height: 100dvh;
             user-select: none;
             -webkit-user-select: none;
             touch-action: none; 
             display: flex;
-            flex-direction: column; /* 🌟 縦に並べる構造に変更 */
+            flex-direction: column; 
         }
 
-        /* 🌟 ログエリアを最上部に完全に独立させ、絶対にズレないように固定 */
+        /* 🌟 最上部のログエリア（固定） */
         .top-header {
             width: 100%;
             background: #15151a;
@@ -31,7 +32,7 @@
             display: flex;
             flex-direction: column;
             gap: 2px;
-            flex-shrink: 0; /* 潰れ防止 */
+            flex-shrink: 0; 
         }
 
         .log-row {
@@ -62,18 +63,19 @@
         #rawLog { color: #ffcc00; }
         #convertedLog { color: #00ffcc; }
 
-        /* 🌟 メインの演奏宇宙（上部ログを除いた残りの全画面） */
+        /* 🌟 メインの演奏領域（ここが自動的に伸縮する） */
         .main-workspace {
             display: grid;
-            /* 母音パネル：32%（小さく）、音量：5%、子音パネル：63% */
             grid-template-columns: 32% 5% 63%; 
             width: 100%;
-            flex-grow: 1; /* 残りの高さをすべて使う */
+            /* 残りの高さをすべて使うが、flex-shrinkで縮むのを許容する */
+            flex-grow: 1; 
+            min-height: 0; 
             box-sizing: border-box;
             overflow: hidden;
         }
 
-        /* --- 左パネル（母音パネル：32%に縮小） --- */
+        /* --- 左パネル（母音パネル：32%） --- */
         .left-panel {
             display: flex;
             flex-direction: column;
@@ -105,7 +107,7 @@
             touch-action: none;
         }
 
-        /* --- 中央パネル（縦型音量フェーダー） --- */
+        /* --- 中央パネル（縦型音量フェーダー：5%） --- */
         .middle-volume-panel {
             display: flex;
             flex-direction: column;
@@ -146,7 +148,7 @@
             transform: rotate(-90deg);
             background: #333;
             height: 6px;
-            width: 45vh; /* スマホの横画面用に少し短くしてはみ出し防止 */
+            width: 40vh; /* 少し短めにして画面内に安全に収める */
             border-radius: 4px;
             outline: none;
             position: absolute;
@@ -173,7 +175,7 @@
             flex-shrink: 0;
         }
 
-        /* --- 右パネル（子音ボタン） --- */
+        /* --- 右パネル（子音ボタン：63%） --- */
         .right-panel-container {
             display: flex;
             flex-direction: column;
@@ -247,10 +249,20 @@
 
         .btn-label { font-size: 16px; }
         .btn-sub { font-size: 9px; color: #aaa; margin-top: 1px; }
+
+        /* 🌟 画面下部に物理的な10%の空きスペースを強制的に確保 */
+        .bottom-spacer {
+            height: 10vh; /* 画面の高さの10% */
+            height: 10dvh;
+            width: 100%;
+            flex-shrink: 0;
+            background: #1e1e24; /* 背景と同じ色にして目立たせない */
+        }
     </style>
 </head>
 <body>
 
+<!-- 最上部のログヘッダー -->
 <div class="top-header">
     <div class="log-row">
         <span class="log-label">リアルタイム：</span>
@@ -262,13 +274,16 @@
     </div>
 </div>
 
+<!-- メインの演奏領域 -->
 <div class="main-workspace">
+    <!-- 左パネル（母音パッド） -->
     <div class="left-panel">
         <div class="pad-container">
             <canvas id="vowelPad"></canvas>
         </div>
     </div>
 
+    <!-- 中央パネル（縦型音量フェーダー） -->
     <div class="middle-volume-panel">
         <div class="volume-label-vertical">VOLUME BOOST</div>
         <div class="slider-wrapper">
@@ -277,6 +292,7 @@
         <div id="volValue">100%</div>
     </div>
 
+    <!-- 右パネル（子音ボタン） -->
     <div class="right-panel-container">
         <div class="right-panel">
             <div class="button-row">
@@ -306,6 +322,9 @@
     </div>
 </div>
 
+<!-- 🌟 これが画面下部に絶対に確保される10%の空きスペース -->
+<div class="bottom-spacer"></div>
+
 <script>
     let audioCtx = null;
     let mainGain = null;
@@ -315,7 +334,7 @@
     let lastProcessedIndex = 0;    
     let activeTimerId = null;      
     
-    // 🌟 スマホ横画面用に配置の基準座標と半径(r)の比率をコンパクトに微調整
+    // 円のサイズや配置バランスはスマホの横画面向けに調整済み
     const vowels = [
         { label: 'I', x: 0.25, y: 0.26, r: 0.22, color: 'rgba(0, 200, 0, 0.15)', border: '#00cc00', isVowel: true }, 
         { label: 'E', x: 0.58, y: 0.23, r: 0.18, color: 'rgba(255, 230, 0, 0.25)', border: '#d4af37', isVowel: true }, 
@@ -515,20 +534,17 @@
     }
     window.addEventListener('resize', resizePad);
 
-    // 🌟 スマホの横画面（押し潰されたアスペクト比）でも円が歪まないように正円ベースで描画
     function drawPad() {
         const w = padCanvas.width, h = padCanvas.height;
         if (!w || !h) return;
         padCtx.clearRect(0, 0, w, h);
 
-        // 潰れを防ぐため、短い方の辺（通常は高さh）を基準に「正円用の絶対サイズ」を計算
         const baseSize = Math.min(w, h);
 
         vowels.forEach(v => {
-            // 中心点の計算をCanvasの実サイズにマッピング
             const cx = v.x * w;
             const cy = v.y * h;
-            const radius = v.r * baseSize * 0.95; // 🌟 母音パネルを少し小さく補正
+            const radius = v.r * baseSize * 0.9; // 母音の丸を正円に保つ計算
 
             padCtx.fillStyle = v.color;
             padCtx.strokeStyle = v.border;
