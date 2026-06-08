@@ -1,3 +1,275 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>リアルタイム文脈補正・ストリーミング音声合成ボード</title>
+    <style>
+        body { 
+            font-family: sans-serif; 
+            background: #1e1e24; 
+            color: #fff;
+            margin: 0; 
+            padding: 0; 
+            overflow: hidden; 
+            width: 100vw; 
+            height: 100vh;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: none; 
+        }
+
+        .app-container {
+            display: grid;
+            grid-template-columns: 35% 65%; 
+            width: 100%;
+            height: 100%;
+            box-sizing: border-box;
+        }
+
+        /* 左側：コントロール＆母音エリア */
+        .left-panel {
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start; 
+            align-items: center;
+            padding: 10px 8px;
+            box-sizing: border-box;
+            border-right: 2px solid #2a2a35;
+            background: #15151a;
+            gap: 12px;
+        }
+
+        /* 2段の文字列表示ログ（母音バナーの上部空きスペースに配置） */
+        .log-container {
+            width: 100%;
+            background: #0d0d11;
+            border: 1px solid #333;
+            border-radius: 6px;
+            padding: 6px 8px;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .log-row {
+            display: flex;
+            align-items: center;
+            width: 100%;
+            overflow: hidden;
+            white-space: nowrap;
+        }
+
+        .log-label {
+            font-size: 9px;
+            color: #888;
+            width: 45px;
+            flex-shrink: 0;
+            font-weight: bold;
+        }
+
+        .log-text {
+            font-size: 12px;
+            font-weight: bold;
+            letter-spacing: 1px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        #rawLog { color: #ffcc00; }
+        #convertedLog { color: #00ffcc; }
+
+        /* スライド式音量調節コンテナ */
+        .volume-container {
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            padding: 0 4px;
+            box-sizing: border-box;
+        }
+
+        .volume-label {
+            font-size: 10px;
+            color: #ccc;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .volume-slider {
+            width: 100%;
+            -webkit-appearance: none;
+            appearance: none;
+            background: #444;
+            height: 8px;
+            border-radius: 4px;
+            outline: none;
+        }
+
+        .volume-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: #00ffcc;
+            cursor: pointer;
+        }
+
+        .pad-container {
+            width: 100%;
+            aspect-ratio: 1 / 1;
+            max-width: 240px; 
+        }
+
+        #vowelPad {
+            background: #22222b;
+            border: 2px solid #444;
+            border-radius: 12px;
+            width: 100%;
+            height: 100%;
+            touch-action: none;
+        }
+
+        /* 右側：子音ボードエリア（UI配置は完全維持） */
+        .right-panel-container {
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start; 
+            height: 100%;
+            background: #1e1e24;
+            box-sizing: border-box;
+            padding-top: 5px; 
+        }
+
+        .right-panel {
+            display: grid;
+            grid-template-rows: repeat(3, 1fr); 
+            gap: 8px;
+            padding: 0 12px;
+            height: 80%; 
+            box-sizing: border-box;
+        }
+
+        .button-row {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr); 
+            gap: 8px;
+        }
+
+        .consonant-btn {
+            background: #2e2e3a;
+            border: 1px solid #444;
+            border-radius: 8px;
+            color: #fff;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            font-weight: bold;
+            cursor: pointer;
+            touch-action: none;
+            transition: background 0.05s;
+        }
+        
+        .playable-key { border: 1px solid #00ffcc !important; }
+        .btn-index { border-bottom: 4px solid #00cc00; } 
+        .btn-middle { border-bottom: 4px solid #d4af37; } 
+        .btn-ring { border-bottom: 4px solid #007bff; } 
+        .btn-little { border-bottom: 4px solid #ff00ff; } 
+
+        .split-btn-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 4px;
+        }
+        .split-sub-btn {
+            background: #2e2e3a;
+            border: 1px solid #444;
+            border-radius: 6px;
+            color: #fff;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            font-weight: bold;
+            font-size: 14px;
+            border-bottom: 4px solid #ff00ff; 
+            box-sizing: border-box;
+        }
+
+        .consonant-btn:active, .split-sub-btn:active {
+            background: #55556b !important;
+            transform: scale(0.98);
+        }
+
+        .btn-label { font-size: 18px; }
+        .btn-sub { font-size: 10px; color: #aaa; margin-top: 2px; }
+    </style>
+</head>
+<body>
+
+<div class="app-container">
+    <div class="left-panel">
+        <!-- 🌟 母音の上の空きスペースを活用した2段文字列表示ログ（最大10文字目安サイズ） -->
+        <div class="log-container">
+            <div class="log-row">
+                <span class="log-label">リアルタイム</span>
+                <span id="rawLog" class="log-text"></span>
+            </div>
+            <div class="log-row">
+                <span class="log-label">1秒ラグ変換</span>
+                <span id="convertedLog" class="log-text"></span>
+            </div>
+        </div>
+
+        <!-- 🌟 サウンドボイスボタンを排除し、スライド式音量調節に変更 -->
+        <div class="volume-container">
+            <div class="volume-label">
+                <span>MASTER VOL</span>
+                <span id="volValue">60%</span>
+            </div>
+            <input type="range" id="volSlider" class="volume-slider" min="0" max="100" value="60">
+        </div>
+
+        <div class="pad-container">
+            <canvas id="vowelPad"></canvas>
+        </div>
+    </div>
+
+    <div class="right-panel-container">
+        <div class="right-panel">
+            <!-- 上段（変更なし） -->
+            <div class="button-row">
+                <div class="consonant-btn btn-index playable-key" data-consonant="z"><span class="btn-label">Z</span><span class="btn-sub">ざ行</span></div>
+                <div class="consonant-btn btn-middle playable-key" data-consonant="g"><span class="btn-label">G</span><span class="btn-sub">が行</span></div>
+                <div class="consonant-btn btn-ring playable-key" data-consonant="d"><span class="btn-label">D</span><span class="btn-sub">だ行</span></div>
+                <div class="split-btn-container">
+                    <div class="split-sub-btn playable-key" data-consonant="b"><span class="btn-label" style="font-size:15px;">B</span><span class="btn-sub" style="font-size:8px;">ば</span></div>
+                    <div class="split-sub-btn playable-key" data-consonant="p"><span class="btn-label" style="font-size:15px;">P</span><span class="btn-sub" style="font-size:8px;">ぱ</span></div>
+                </div>
+            </div>
+
+            <!-- 中段（変更なし） -->
+            <div class="button-row">
+                <div class="consonant-btn btn-index playable-key" data-consonant="s"><span class="btn-label">S</span><span class="btn-sub">さ行</span></div>
+                <div class="consonant-btn btn-middle playable-key" data-consonant="k"><span class="btn-label">K</span><span class="btn-sub">か行</span></div>
+                <div class="consonant-btn btn-ring playable-key" data-consonant="t"><span class="btn-label">T</span><span class="btn-sub">た行</span></div>
+                <div class="consonant-btn btn-little playable-key" data-consonant="h"><span class="btn-label">H</span><span class="btn-sub">は行</span></div>
+            </div>
+
+            <!-- 下段（変更なし） -->
+            <div class="button-row">
+                <div class="consonant-btn btn-index playable-key" data-consonant="n"><span class="btn-label">N</span><span class="btn-sub">な・ん</span></div>
+                <div class="consonant-btn btn-middle playable-key" data-consonant="m"><span class="btn-label">M</span><span class="btn-sub">ま行</span></div>
+                <div class="consonant-btn btn-ring playable-key" data-consonant="r"><span class="btn-label">R</span><span class="btn-sub">ら行</span></div>
+                <div class="consonant-btn btn-little playable-key" data-consonant="vowel_trigger"><span class="btn-label">V</span><span class="btn-sub">母音トリガ</span></div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
     let audioCtx = null;
     let mainGain = null;
@@ -286,3 +558,5 @@
         setTimeout(resizePad, 100);
     });
 </script>
+</body>
+</html>
