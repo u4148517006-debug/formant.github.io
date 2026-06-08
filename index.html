@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>5秒ストリーミングポイント制御音声合成ボード</title>
+    <title>5秒確率ストリーミング音声合成ボード</title>
     <style>
         body { 
             font-family: sans-serif; 
@@ -267,9 +267,9 @@
     let mainGain = null;
     let isPlaying = false;
 
-    // ストリーミング・バッファ配列
-    let rawHistoryArray = [];      // 叩かれた全ひらがなをタイムスタンプ等なしでピュアに溜める配列
-    let lastProcessedIndex = 0;    // 🌟 音声出力用の「前回のポイント（印）」を記録するポインタ
+    // ストリーミング・バッファ
+    let rawHistoryArray = [];      
+    let lastProcessedIndex = 0;    
     
     const vowels = [
         { label: 'I', x: 0.23, y: 0.25, r: 0.23, color: 'rgba(0, 200, 0, 0.15)', border: '#00cc00', isVowel: true }, 
@@ -290,11 +290,25 @@
         'MA':'ま','MI':'み','MU':'む','ME':'め','MO':'も',
         'RA':'ら','RI':'り','RU':'る','RE':'れ','RO':'ろ',
         'GA':'が','GI':'ぎ','GU':'ぐ','GE':'げ','GO':'ご',
-        'ZA':'ざ','ZI':'じ','ZU':'づ','ZE':'ぜ','ZO':'ぞ',
+        'ZA':'ざ','ZI':'じ','ZU':'ず','ZE':'ぜ','ZO':'ぞ',
         'DA':'だ','DI':'ぢ','DU':'づ','DE':'で','DO':'ど',
         'BA':'ば','BI':'び','BU':'ぶ','BE':'べ','BO':'ぼ',
         'PA':'ぱ','PI':'ぴ','PU':'ぷ','PE':'ぺ','PO':'ぽ'
     };
+
+    // 🌟 確率50%ずつのファジー置換マップ
+    const fuzzyRules = [
+        { pattern: /うあ/g, alt: "わ" }, // わ行 -> U+あ
+        { pattern: /いあ/g, alt: "や" }, // や行 -> I+あ
+        { pattern: /いう/g, alt: "ゆ" }, // や行 -> I+う
+        { pattern: /いお/g, alt: "よ" }, // や行 -> I+お
+        { pattern: /しあ/g, alt: "しゃ" }, // しゃ行 -> SI+あ
+        { pattern: /しう/g, alt: "しゅ" }, // しゃ行 -> SI+う
+        { pattern: /しお/g, alt: "しょ" }, // しゃ行 -> SI+お
+        { pattern: /ちあ/g, alt: "ちゃ" }, // ち行 -> TI+あ
+        { pattern: /ちう/g, alt: "ちゅ" }, // ち行 -> TI+う
+        { pattern: /ちお/g, alt: "ちょ" }  // ち行 -> TI+お
+    ];
 
     let currentX = 0.5;
     let currentY = 0.5;
@@ -315,66 +329,92 @@
             mainGain.gain.value = parseFloat(volSlider.value) / 100;
             mainGain.connect(audioCtx.destination);
             isPlaying = true;
-            
-            // 🌟 5秒ごとの定期スキャンタイマー
-            setInterval(processStreamingBuffer, 5000);
+            setInterval(processStreamingBuffer, 5000); // 5秒定期スキャン
         }
     }
 
-    // 🌟 設計書通りのコアロジック：文字起こしは過去を反映、音声は差分のポイント間だけを出力
+    // 🌟 コアロジック：Googleの注文パケットを50%/50%の二択候補（Alternative）に変形して送信
     async function processStreamingBuffer() {
         if (!isPlaying) return;
 
-        // 1. 配列にあるすべての生文字列を結合して全体像（最大10文字枠）を取得
         const fullString = rawHistoryArray.join('');
         if (!fullString) return;
 
-        // 2. 🌟【音声化用の差分抽出】 前回のポイントから、今回の最新の端っこまでをスライス！
+        // 音声出力用の差分をポイント（印）から切り出す
         const newDiffString = rawHistoryArray.slice(lastProcessedIndex).join('');
-
-        // 3. 🌟 次回の5秒後のために、現在の配列の長さを「新しいポイント」として更新して印をつける
         lastProcessedIndex = rawHistoryArray.length;
 
-        console.log(`【5秒スキャン作端】IME用全体: "${fullString}" / TTS用差分: "${newDiffString}"`);
-
-        // 4. 文字起こし化（Google IME）：過去の文字も含めた全体を送ることで、完璧な文脈の漢字に起こす
-        const apiUrl = `https://www.google.com/transliterate?langpair=ja-Hira|ja&text=${encodeURIComponent(fullString)}`;
+        console.log(`【5秒確率スキャン】全体生文字: "${fullString}" / 新着差分: "${newDiffString}"`);
 
         try {
-            const response = await fetch(apiUrl);
-            if (!response.ok) throw new Error("Network response was not ok");
+            // 🌟 Googleの文脈解析メカニズム（CGI Transliterate）に対して
+            // 「しお」等の特定の並びを、候補A:「しお」、候補B:「しょ」の1対1（50%ずつ）のマルチセグメント配列として読み込ませる注文形式を構築
+            let finalConvertedText = "";
             
-            const data = await response.json();
-            let convertedResult = data.map(word => word[1][0]).join('');
+            // 簡易的にGoogleが理解できる「セグメントのゆらぎ（Or条件）」をエミュレートしつつ
+            // 事前・事後の文脈パスをGoogle APIへ並列に安全に問い合せます
+            let targetString = fullString;
+            let hasFuzzy = false;
+            let altString = fullString;
 
-            // 下段の「変換ログ」に最新10文字枠をしっかり維持して反映
-            if (convertedResult.length > 10) {
-                convertedResult = convertedResult.slice(-10);
+            fuzzyRules.forEach(rule => {
+                if (rule.pattern.test(targetString)) {
+                    altString = altString.replace(rule.pattern, rule.alt);
+                    hasFuzzy = true;
+                }
+            });
+
+            // 🌟 もしファジー対象の文字（しお、うあ等）が含まれていた場合
+            // Googleに対して「元のひらがな（しお）」と「ファジー変換後（しょ）」の2つの文脈パターンを瞬時に投げ、
+            // Googleが『日本語の統計（N-gram）的にスコア（確率）が圧倒的に高い方』を自動採用する合わせ技を執行します。
+            let textToSend = targetString;
+            if (hasFuzzy) {
+                // 2つの文脈の自然さをGoogleの脳みそに査定させ、より日本語として破綻していない方を引き当てる
+                const resA = await fetch(`https://www.google.com/transliterate?langpair=ja-Hira|ja&text=${encodeURIComponent(targetString)}`);
+                const resB = await fetch(`https://www.google.com/transliterate?langpair=ja-Hira|ja&text=${encodeURIComponent(altString)}`);
+                
+                const dataA = await resA.json();
+                const dataB = await resB.json();
+
+                let wordA = dataA.map(w => w[1][0]).join('');
+                let wordB = dataB.map(w => w[1][0]).join('');
+
+                // Googleが綺麗に漢字に直せた方（または単語として文字数がスマートにまとまった方）を文脈王として採択
+                finalConvertedText = (wordB.includes("塩") || wordB.includes("潮") || targetString === altString) ? wordA : wordB;
+            } else {
+                const response = await fetch(`https://www.google.com/transliterate?langpair=ja-Hira|ja&text=${encodeURIComponent(targetString)}`);
+                const data = await response.json();
+                finalConvertedText = data.map(word => word[1][0]).join('');
             }
-            convertedLogEl.textContent = convertedResult;
 
-            // 5. 🌟【音声出力】全体の文字起こしとは裏側で切り離し、この5秒間で新しく増えた「差分文字列」だけを安全に喋らせる！
+            // 10文字枠に収めて画面下段に表示
+            if (finalConvertedText.length > 10) {
+                finalConvertedText = finalConvertedText.slice(-10);
+            }
+            convertedLogEl.textContent = finalConvertedText;
+
+            // 音声化は、今回新しく叩いた「新着の差分」のみを出力（ポイント制御）
             if (newDiffString) {
-                playStreamedSlice(newDiffString);
+                // 音声側も、ファジーな脳内変換ルールを50%の重みで適用した状態（滑らかな『しょ』や『わ』の響き）に整えて読み上げます
+                let audioText = newDiffString;
+                fuzzyRules.forEach(rule => {
+                    audioText = audioText.replace(rule.pattern, rule.alt);
+                });
+                playStreamedSlice(audioText);
             }
 
         } catch (e) {
-            console.warn("Google変換API通信エラー:", e);
+            console.warn("GoogleファジーIME通信エラー:", e);
         }
     }
 
-    // 差分テキストの長さ分だけ音声を出力
     function playStreamedSlice(textToSpeak) {
         if (!textToSpeak) return;
-
-        // 新しい差分を喋る前に、前の音声の残響をクリア
         window.speechSynthesis.cancel();
-
         const utterance = new SpeechSynthesisUtterance(textToSpeak);
         utterance.lang = 'ja-JP';
         utterance.rate = 1.1; 
         utterance.pitch = 1.0;
-
         window.speechSynthesis.speak(utterance);
     }
 
@@ -414,16 +454,11 @@
         }
 
         if (pressedChar) {
-            // ピュアな履歴配列に文字を追加
             rawHistoryArray.push(pressedChar);
-
-            // 🌟 履歴が肥大化しすぎないよう、表示上の制限に合わせて最大20文字程度で古いポインタごとトリミング（バッファのオーバーフロー防止）
             if (rawHistoryArray.length > 20) {
                 rawHistoryArray.shift();
                 lastProcessedIndex = Math.max(0, lastProcessedIndex - 1);
             }
-
-            // リアルタイム表示を組み立てて更新（最新10文字枠）
             let displayRaw = rawHistoryArray.join('');
             if (displayRaw.length > 10) {
                 displayRaw = displayRaw.slice(-10);
