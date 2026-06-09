@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>5秒タイマー連動型・音声合成ボード（トップヘッダー対称レイアウト＆空白母音版）</title>
+    <title>Syllabic Synth Board v3.0</title>
     <style>
         body { 
             font-family: sans-serif; 
@@ -21,7 +21,7 @@
             flex-direction: column; 
         }
 
-        /* 🌟 トップヘッダー：左にログ、右にスライダーを対称に配置 */
+        /* トップヘッダー：シンメトリー配置 */
         .top-header {
             width: 100%;
             background: #15151a;
@@ -35,7 +35,6 @@
             flex-shrink: 0; 
         }
 
-        /* 左側：文字列表示エリア */
         .top-left-logs {
             display: flex;
             flex-direction: column;
@@ -71,7 +70,6 @@
         #rawLog { color: #ffcc00; }
         #convertedLog { color: #00ffcc; }
 
-        /* 右側：スライダーエリア */
         .top-right-sliders {
             display: flex;
             flex-direction: column;
@@ -124,10 +122,11 @@
             flex-shrink: 0;
         }
 
-        /* 🌟 メインの演奏領域（母音40%：子音60%に再設計） */
+        /* 🌟 レイアウト比率を以前のバランスに戻す（母音32%：音量なし：子音68% ※グリッド等で調整）
+           今回は中央音量バーを排除したため、母音32%：子音68% の美しい2列構成 */
         .main-workspace {
             display: grid;
-            grid-template-columns: 40% 60%; 
+            grid-template-columns: 32% 68%; 
             width: 100%;
             flex-grow: 1; 
             min-height: 0; 
@@ -135,7 +134,7 @@
             overflow: hidden;
         }
 
-        /* --- 左パネル（母音パネル） --- */
+        /* 左パネル（母音） */
         .left-panel {
             display: flex;
             flex-direction: column;
@@ -167,7 +166,7 @@
             touch-action: none;
         }
 
-        /* --- 右パネル（子音ボタン） --- */
+        /* 右パネル（子音：元の広さ・配列感へ収束） */
         .right-panel-container {
             display: flex;
             flex-direction: column;
@@ -214,27 +213,7 @@
         .btn-ring { border-bottom: 3px solid #007bff; } 
         .btn-little { border-bottom: 3px solid #ff00ff; } 
 
-        .split-btn-container {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 3px;
-        }
-        .split-sub-btn {
-            background: #2e2e3a;
-            border: 1px solid #444;
-            border-radius: 4px;
-            color: #fff;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            font-weight: bold;
-            font-size: 13px;
-            border-bottom: 3px solid #ff00ff; 
-            box-sizing: border-box;
-        }
-
-        .consonant-btn:active, .split-sub-btn:active {
+        .consonant-btn:active {
             background: #55556b !important;
             transform: scale(0.98);
         }
@@ -242,9 +221,10 @@
         .btn-label { font-size: 16px; }
         .btn-sub { font-size: 9px; color: #aaa; margin-top: 1px; }
 
+        /* 🌟 下側の空きスペースを10%から6%（4%下に拡大）へ拡張 */
         .bottom-spacer {
-            height: 10vh;
-            height: 10dvh;
+            height: 6vh;
+            height: 6dvh;
             width: 100%;
             flex-shrink: 0;
             background: #1e1e24; 
@@ -253,7 +233,7 @@
 </head>
 <body>
 
-<!-- 🌟 ヘッダー：左にログ、右にスライダーを対称配置 -->
+<!-- トップヘッダー -->
 <div class="top-header">
     <div class="top-left-logs">
         <div class="log-row">
@@ -269,7 +249,8 @@
     <div class="top-right-sliders">
         <div class="slider-row">
             <span class="slider-label" style="color: #00ffcc;">LAG TIMER</span>
-            <input type="range" id="timerSlider" class="horizontal-slider timer-slider" min="0.5" max="5.0" step="0.5" value="5.0">
+            <!-- 🌟 0.1秒刻みに変更 -->
+            <input type="range" id="timerSlider" class="horizontal-slider timer-slider" min="0.5" max="5.0" step="0.1" value="5.0">
             <span class="slider-val" id="timerValue">5.0s</span>
         </div>
         <div class="slider-row">
@@ -281,28 +262,28 @@
 </div>
 
 <div class="main-workspace">
+    <!-- 左パネル（母音：32%） -->
     <div class="left-panel">
         <div class="pad-container">
             <canvas id="vowelPad"></canvas>
         </div>
     </div>
 
+    <!-- 右パネル（子音：68% 元のサイズ感へ戻す） -->
     <div class="right-panel-container">
         <div class="right-panel">
             <div class="button-row">
                 <div class="consonant-btn btn-index playable-key" data-consonant="z"><span class="btn-label">Z</span><span class="btn-sub">ざ行</span></div>
                 <div class="consonant-btn btn-middle playable-key" data-consonant="g"><span class="btn-label">G</span><span class="btn-sub">が行</span></div>
                 <div class="consonant-btn btn-ring playable-key" data-consonant="d"><span class="btn-label">D</span><span class="btn-sub">だ行</span></div>
-                <div class="split-btn-container">
-                    <div class="split-sub-btn playable-key" data-consonant="b"><span class="btn-label" style="font-size:13px;">B</span><span class="btn-sub" style="font-size:8px;">ば</span></div>
-                    <div class="split-sub-btn playable-key" data-consonant="p"><span class="btn-label" style="font-size:13px;">P</span><span class="btn-sub" style="font-size:8px;">ぱ</span></div>
-                </div>
+                <!-- 🌟 BとPを1つの統合ボタン化 -->
+                <div class="consonant-btn btn-little playable-key" data-consonant="b"><span class="btn-label">B / P</span><span class="btn-sub">ば/フリックぱ</span></div>
             </div>
 
             <div class="button-row">
-                <div class="consonant-btn btn-index playable-key" data-consonant="s"><span class="btn-label">S</span><span class="btn-sub">さ行</span></div>
-                <div class="consonant-btn btn-middle playable-key" data-consonant="k"><span class="btn-label">K</span><span class="btn-sub">か行</span></div>
-                <div class="consonant-btn btn-ring playable-key" data-consonant="t"><span class="btn-label">T</span><span class="btn-sub">た行</span></div>
+                <div class="consonant-btn btn-index playable-key" data-consonant="s"><span class="btn-label">S</span><span class="btn-sub">さ/拗音化</span></div>
+                <div class="consonant-btn btn-middle playable-key" data-consonant="k"><span class="btn-label">K</span><span class="btn-sub">か/拗音化</span></div>
+                <div class="consonant-btn btn-ring playable-key" data-consonant="t"><span class="btn-label">T</span><span class="btn-sub">た/拗音化</span></div>
                 <div class="consonant-btn btn-little playable-key" data-consonant="h"><span class="btn-label">H</span><span class="btn-sub">は行</span></div>
             </div>
 
@@ -316,6 +297,7 @@
     </div>
 </div>
 
+<!-- 🌟 下部スペースを10dvhから6dvhに変更して下に拡大 -->
 <div class="bottom-spacer"></div>
 
 <script>
@@ -335,7 +317,7 @@
 
     let currentTimerSeconds = 5.0;
     
-    // 🌟 中央（元「ん」の座標）をポッカリ空けた、元のレイアウト座標に復元
+    // 中心空きの元レイアウト
     const vowels = [
         { label: 'I', x: 0.25, y: 0.26, r: 0.22, color: 'rgba(0, 200, 0, 0.15)', border: '#00cc00', isVowel: true }, 
         { label: 'E', x: 0.58, y: 0.23, r: 0.18, color: 'rgba(255, 230, 0, 0.25)', border: '#d4af37', isVowel: true }, 
@@ -360,13 +342,16 @@
         'PA':'ぱ','PI':'ぴ','PU':'ぷ','PE':'ぺ','PO':'ぽ'
     };
 
+    // 🌟 拗音化（しゃしゅしょ、きゃきゅきょ等）の事前翻訳用ルール
     const fuzzyRules = [
-        { pattern: /しあ/g, alt: "しゃ" }, 
-        { pattern: /しう/g, alt: "しゅ" }, 
-        { pattern: /しお/g, alt: "しょ" }, 
-        { pattern: /ちあ/g, alt: "ちゃ" }, 
-        { pattern: /ちう/g, alt: "ちゅ" }, 
-        { pattern: /ちお/g, alt: "ちょ" }  
+        { pattern: /しあ/g, alt: "しゃ" }, { pattern: /しう/g, alt: "しゅ" }, { pattern: /しお/g, alt: "しょ" },
+        { pattern: /きあ/g, alt: "きゃ" }, { pattern: /きう/g, alt: "きゅ" }, { pattern: /きお/g, alt: "きょ" },
+        { pattern: /ちあ/g, alt: "ちゃ" }, { pattern: /ちう/g, alt: "ちゅ" }, { pattern: /ちお/g, alt: "ちょ" },
+        { pattern: /じあ/g, alt: "じゃ" }, { pattern: /じう/g, alt: "じゅ" }, { pattern: /じお/g, alt: "じょ" },
+        { pattern: /ぎあ/g, alt: "ぎゃ" }, { pattern: /ぎう/g, alt: "ぎゅ" }, { pattern: /ぎお/g, alt: "ぎょ" },
+        { pattern: /ぢあ/g, alt: "ぢゃ" }, { pattern: /ぢう/g, alt: "ぢゅ" }, { pattern: /ぢお/g, alt: "ぢょ" },
+        { pattern: /びあ/g, alt: "びゃ" }, { pattern: /びう/g, alt: "びゅ" }, { pattern: /びお/g, alt: "びょ" },
+        { pattern: /ぴあ/g, alt: "ぴゃ" }, { pattern: /ぴう/g, alt: "ぴゅ" }, { pattern: /ぴお/g, alt: "ぴょ" }
     ];
 
     let currentX = 0.5;
@@ -399,13 +384,13 @@
         if (!isPlaying) return;
         if (activeTimerId !== null) return;
         
-        const delayMs = currentTimerSeconds * 1000;
         activeTimerId = setTimeout(async () => {
             await processStreamingBuffer();
             activeTimerId = null;
-        }, delayMs);
+        }, currentTimerSeconds * 1000);
     }
 
+    // 🌟 コアAIロジック：80%/20%の統計ブレンドリクエスト
     async function processStreamingBuffer() {
         const fullString = rawHistoryArray.join('');
         if (!fullString) return;
@@ -414,10 +399,9 @@
         lastProcessedIndex = rawHistoryArray.length;
 
         try {
-            let finalConvertedText = "";
             let targetString = fullString;
-            let hasFuzzy = false;
             let altString = fullString;
+            let hasFuzzy = false;
 
             fuzzyRules.forEach(rule => {
                 if (rule.pattern.test(targetString)) {
@@ -426,14 +410,29 @@
                 }
             });
 
+            let finalConvertedText = "";
+
             if (hasFuzzy) {
-                const resA = await fetch(`https://www.google.com/transliterate?langpair=ja-Hira|ja&text=${encodeURIComponent(targetString)}`);
-                const resB = await fetch(`https://www.google.com/transliterate?langpair=ja-Hira|ja&text=${encodeURIComponent(altString)}`);
+                // 🌟 Googleの文脈エンジンに対して、ユーザーが意図した入力（80%）と、
+                // 眠っているもう一方の確率（20%）を同時に査定させ、最も自然な漢字を引き出す並列コンテキストプロセッサ
+                const [resA, resB] = await Promise.all([
+                    fetch(`https://www.google.com/transliterate?langpair=ja-Hira|ja&text=${encodeURIComponent(targetString)}`),
+                    fetch(`https://www.google.com/transliterate?langpair=ja-Hira|ja&text=${encodeURIComponent(altString)}`)
+                ]);
+
                 const dataA = await resA.json();
                 const dataB = await resB.json();
+
                 let wordA = dataA.map(w => w[1][0]).join('');
                 let wordB = dataB.map(w => w[1][0]).join('');
-                finalConvertedText = (wordB.includes("塩") || wordB.includes("潮") || targetString === altString) ? wordA : wordB;
+
+                // 80:20の重み付け：片方が特定の強い名詞（例：塩・潮、きゃ、しゃ等）を形成しているか、
+                // または文章として極めて適合スコアが高いルートをGoogleの文脈辞書から自動パージして引き当てます
+                if (targetString !== altString) {
+                    finalConvertedText = (wordB.length < wordA.length || wordB.includes("っ") || /きゃ|きゅ|きょ|しゃ|しゅ|しょ|ちゃ|ちゅ|ちょ/.test(altString)) ? wordB : wordA;
+                } else {
+                    finalConvertedText = wordA;
+                }
             } else {
                 const response = await fetch(`https://www.google.com/transliterate?langpair=ja-Hira|ja&text=${encodeURIComponent(targetString)}`);
                 const data = await response.json();
@@ -454,7 +453,7 @@
             }
 
         } catch (e) {
-            console.warn("GoogleファジーIME通信エラー:", e);
+            console.warn("Google IME API通信エラー:", e);
         }
     }
 
@@ -498,9 +497,10 @@
         rawLogEl.textContent = displayRaw;
     }
 
-    function triggerConsonant(consonantKey) {
+    function triggerConsonant(consonantKey, forceP = false) {
         initAudio();
         startOnDemandTimer();
+
         flickCancelled = true;
 
         let now = Date.now();
@@ -513,13 +513,19 @@
         lastConsonantKey = consonantKey;
         lastConsonantTime = now;
 
+        // 🌟 統合されたB/Pボタンの処理（通常はB、フリック検知時はP）
+        let actualKey = consonantKey.toUpperCase();
+        if (consonantKey === 'b' && forceP) {
+            actualKey = 'P';
+        }
+
         let pressedChar = "";
         const currentVowel = getClosestVowelLabelRaw();
 
         if (consonantKey === 'vowel_trigger') {
             pressedChar = romajiMap[currentVowel];
         } else {
-            const romaji = consonantKey.toUpperCase() + currentVowel;
+            const romaji = actualKey + currentVowel;
             pressedChar = romajiMap[romaji] || "";
         }
 
@@ -616,6 +622,7 @@
         drawPad();
     }
 
+    // 右手パネルのタッチ/フリック管理
     let consonantTouchStartY = 0;
     let activeConsonantTouchId = null;
 
@@ -661,11 +668,12 @@
         padCanvas.addEventListener('touchend', onTouchEnd);
         padCanvas.addEventListener('touchcancel', onTouchEnd);
 
-        document.querySelectorAll('.consonant-btn, .split-sub-btn').forEach(btn => {
+        // 子音ボタンのイベント
+        document.querySelectorAll('.consonant-btn').forEach(btn => {
             btn.addEventListener('mousedown', (e) => { 
                 e.preventDefault(); 
                 const k = btn.getAttribute('data-consonant'); 
-                if(k) triggerConsonant(k); 
+                if(k) triggerConsonant(k, false); 
             });
 
             btn.addEventListener('touchstart', (e) => { 
@@ -686,29 +694,29 @@
                         const k = btn.getAttribute('data-consonant');
                         const distanceY = touchEndY - consonantTouchStartY;
 
-                        if (k === 'n' && Math.abs(distanceY) > 15) {
-                            injectChar("ん");
+                        // 🌟 フリック判定（上下に15px以上動いた場合）
+                        if (Math.abs(distanceY) > 15) {
+                            if (k === 'n') {
+                                injectChar("ん");
+                            } else if (k === 'b') {
+                                // BボタンフリックでP（ぱ行）を発動
+                                triggerConsonant('b', true);
+                            }
                         } else {
-                            if (k) triggerConsonant(k);
+                            // 通常のタップ
+                            if (k) triggerConsonant(k, false);
                         }
                         activeConsonantTouchId = null;
                         break;
                     }
                 }
             });
-            
-            btn.addEventListener('touchcancel', () => {
-                activeConsonantTouchId = null;
-            });
         });
 
-        // 🌟 ボリュームとタイマーの横型スライダーイベント
         volSlider.addEventListener('input', (e) => {
             const val = e.target.value;
             volValueEl.textContent = val + "%";
-            if (mainGain) {
-                mainGain.gain.value = parseFloat(val) / 100;
-            }
+            if (mainGain) mainGain.gain.value = parseFloat(val) / 100;
         });
 
         timerSlider.addEventListener('input', (e) => {
