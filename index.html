@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>可変タイマー＆Nフリック「ん」搭載ボード</title>
+    <title>5秒タイマー連動型・音声合成ボード（トップヘッダー対称レイアウト＆空白母音版）</title>
     <style>
         body { 
             font-family: sans-serif; 
@@ -21,16 +21,26 @@
             flex-direction: column; 
         }
 
+        /* 🌟 トップヘッダー：左にログ、右にスライダーを対称に配置 */
         .top-header {
             width: 100%;
             background: #15151a;
             border-bottom: 2px solid #2a2a35;
-            padding: 6px 12px;
+            padding: 8px 12px;
             box-sizing: border-box;
             display: flex;
-            flex-direction: column;
-            gap: 2px;
+            flex-direction: row;
+            justify-content: space-between;
+            align-items: center;
             flex-shrink: 0; 
+        }
+
+        /* 左側：文字列表示エリア */
+        .top-left-logs {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            width: 48%;
         }
 
         .log-row {
@@ -61,9 +71,63 @@
         #rawLog { color: #ffcc00; }
         #convertedLog { color: #00ffcc; }
 
+        /* 右側：スライダーエリア */
+        .top-right-sliders {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            width: 48%;
+        }
+
+        .slider-row {
+            display: flex;
+            align-items: center;
+            width: 100%;
+        }
+
+        .slider-label {
+            font-size: 10px;
+            width: 75px;
+            flex-shrink: 0;
+            font-weight: bold;
+        }
+
+        .horizontal-slider {
+            flex-grow: 1;
+            margin: 0 10px;
+            -webkit-appearance: none;
+            appearance: none;
+            background: #333;
+            height: 6px;
+            border-radius: 3px;
+            outline: none;
+        }
+
+        .horizontal-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+
+        .timer-slider::-webkit-slider-thumb { background: #00ffcc; box-shadow: 0 0 6px rgba(0, 255, 204, 0.6); }
+        .vol-slider::-webkit-slider-thumb { background: #ff3366; box-shadow: 0 0 6px rgba(255, 51, 102, 0.6); }
+
+        .slider-val {
+            font-size: 11px;
+            font-weight: bold;
+            color: #fff;
+            width: 35px;
+            text-align: right;
+            flex-shrink: 0;
+        }
+
+        /* 🌟 メインの演奏領域（母音40%：子音60%に再設計） */
         .main-workspace {
             display: grid;
-            grid-template-columns: 32% 5% 63%; 
+            grid-template-columns: 40% 60%; 
             width: 100%;
             flex-grow: 1; 
             min-height: 0; 
@@ -71,6 +135,7 @@
             overflow: hidden;
         }
 
+        /* --- 左パネル（母音パネル） --- */
         .left-panel {
             display: flex;
             flex-direction: column;
@@ -102,136 +167,23 @@
             touch-action: none;
         }
 
-        .middle-volume-panel {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            background: #191920;
-            border-right: 1px solid #2a2a35;
-            padding: 10px 0;
-            box-sizing: border-box;
-            height: 100%;
-            overflow: hidden;
-        }
-
-        .volume-label-vertical {
-            font-size: 8px;
-            color: #ccc;
-            font-weight: bold;
-            text-align: center;
-            margin-bottom: 5px;
-            writing-mode: vertical-rl;
-            text-orientation: mixed;
-            letter-spacing: 1px;
-            flex-shrink: 0;
-        }
-
-        .slider-wrapper {
-            flex-grow: 1;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            position: relative;
-            width: 100%;
-        }
-
-        .volume-slider-vertical {
-            -webkit-appearance: none;
-            appearance: none;
-            transform: rotate(-90deg);
-            background: #333;
-            height: 6px;
-            width: 40vh;
-            border-radius: 4px;
-            outline: none;
-            position: absolute;
-            cursor: pointer;
-        }
-
-        .volume-slider-vertical::-webkit-slider-thumb {
-            -webkit-appearance: none;
-            appearance: none;
-            width: 20px;
-            height: 20px;
-            border-radius: 50%;
-            background: #ff3366;
-            box-shadow: 0 0 6px rgba(255, 51, 102, 0.6);
-            cursor: pointer;
-        }
-
-        #volValue {
-            font-size: 9px;
-            font-weight: bold;
-            color: #ff3366;
-            margin-top: 5px;
-            text-align: center;
-            flex-shrink: 0;
-        }
-
+        /* --- 右パネル（子音ボタン） --- */
         .right-panel-container {
             display: flex;
             flex-direction: column;
-            justify-content: flex-start; /* 上寄せに変更 */
+            justify-content: center; 
             height: 100%;
             background: #1e1e24;
             box-sizing: border-box;
             padding: 8px; 
             overflow: hidden;
-            gap: 8px; /* スライダーとボタンの隙間 */
-        }
-
-        /* 🌟 タイマー可変スライダー用のエリア */
-        .timer-control-container {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            background: #2a2a35;
-            padding: 6px 12px;
-            border-radius: 6px;
-            flex-shrink: 0;
-        }
-        
-        .timer-label {
-            font-size: 10px;
-            font-weight: bold;
-            color: #00ffcc;
-        }
-
-        .timer-slider {
-            flex-grow: 1;
-            margin: 0 10px;
-            -webkit-appearance: none;
-            appearance: none;
-            background: #444;
-            height: 6px;
-            border-radius: 3px;
-            outline: none;
-        }
-
-        .timer-slider::-webkit-slider-thumb {
-            -webkit-appearance: none;
-            appearance: none;
-            width: 16px;
-            height: 16px;
-            border-radius: 50%;
-            background: #00ffcc;
-            cursor: pointer;
-        }
-
-        #timerValue {
-            font-size: 11px;
-            font-weight: bold;
-            color: #fff;
-            width: 30px;
-            text-align: right;
         }
 
         .right-panel {
             display: grid;
             grid-template-rows: repeat(3, 1fr); 
             gap: 6px;
-            flex-grow: 1; /* 残りのスペースを埋める */
+            height: 96%;
             box-sizing: border-box;
         }
 
@@ -301,14 +253,30 @@
 </head>
 <body>
 
+<!-- 🌟 ヘッダー：左にログ、右にスライダーを対称配置 -->
 <div class="top-header">
-    <div class="log-row">
-        <span class="log-label">リアルタイム：</span>
-        <span id="rawLog" class="log-text"></span>
+    <div class="top-left-logs">
+        <div class="log-row">
+            <span class="log-label">リアルタイム：</span>
+            <span id="rawLog" class="log-text"></span>
+        </div>
+        <div class="log-row">
+            <span class="log-label" id="convertedLogLabel">5.0秒変換：</span>
+            <span id="convertedLog" class="log-text"></span>
+        </div>
     </div>
-    <div class="log-row">
-        <span class="log-label" id="convertedLogLabel">5.0秒変換：</span>
-        <span id="convertedLog" class="log-text"></span>
+    
+    <div class="top-right-sliders">
+        <div class="slider-row">
+            <span class="slider-label" style="color: #00ffcc;">LAG TIMER</span>
+            <input type="range" id="timerSlider" class="horizontal-slider timer-slider" min="0.5" max="5.0" step="0.5" value="5.0">
+            <span class="slider-val" id="timerValue">5.0s</span>
+        </div>
+        <div class="slider-row">
+            <span class="slider-label" style="color: #ff3366;">VOL BOOST</span>
+            <input type="range" id="volSlider" class="horizontal-slider vol-slider" min="0" max="300" value="100">
+            <span class="slider-val" id="volValue">100%</span>
+        </div>
     </div>
 </div>
 
@@ -319,22 +287,7 @@
         </div>
     </div>
 
-    <div class="middle-volume-panel">
-        <div class="volume-label-vertical">VOLUME BOOST</div>
-        <div class="slider-wrapper">
-            <input type="range" id="volSlider" class="volume-slider-vertical" min="0" max="300" value="100">
-        </div>
-        <div id="volValue">100%</div>
-    </div>
-
     <div class="right-panel-container">
-        <!-- 🌟 タイマー可変スライダー -->
-        <div class="timer-control-container">
-            <span class="timer-label">LAG TIMER</span>
-            <input type="range" id="timerSlider" class="timer-slider" min="0.5" max="5.0" step="0.5" value="5.0">
-            <span id="timerValue">5.0s</span>
-        </div>
-
         <div class="right-panel">
             <div class="button-row">
                 <div class="consonant-btn btn-index playable-key" data-consonant="z"><span class="btn-label">Z</span><span class="btn-sub">ざ行</span></div>
@@ -354,7 +307,6 @@
             </div>
 
             <div class="button-row">
-                <!-- 🌟 Nボタンはフリックで「ん」になるためサブテキストを変更 -->
                 <div class="consonant-btn btn-index playable-key" data-consonant="n"><span class="btn-label">N</span><span class="btn-sub">な/フリックん</span></div>
                 <div class="consonant-btn btn-middle playable-key" data-consonant="m"><span class="btn-label">M</span><span class="btn-sub">ま行</span></div>
                 <div class="consonant-btn btn-ring playable-key" data-consonant="r"><span class="btn-label">R</span><span class="btn-sub">ら行</span></div>
@@ -381,16 +333,15 @@
     let touchStartVowelLabel = null;
     let flickCancelled = false;
 
-    // 🌟 ラグタイマー用の変数（初期値 5.0秒 = 5000ms）
     let currentTimerSeconds = 5.0;
     
-    // 🌟 「ん（NN）」を削除し、5つの母音のみの美しい五芒星レイアウトに変更
+    // 🌟 中央（元「ん」の座標）をポッカリ空けた、元のレイアウト座標に復元
     const vowels = [
         { label: 'I', x: 0.25, y: 0.26, r: 0.22, color: 'rgba(0, 200, 0, 0.15)', border: '#00cc00', isVowel: true }, 
-        { label: 'E', x: 0.75, y: 0.26, r: 0.22, color: 'rgba(255, 230, 0, 0.25)', border: '#d4af37', isVowel: true }, 
-        { label: 'A', x: 0.50, y: 0.50, r: 0.22, color: 'rgba(255, 0, 0, 0.15)', border: '#ff0000', isVowel: true }, 
-        { label: 'U', x: 0.25, y: 0.74, r: 0.22, color: 'rgba(0, 0, 255, 0.15)', border: '#0000ff', isVowel: true }, 
-        { label: 'O', x: 0.75, y: 0.74, r: 0.22, color: 'rgba(255, 0, 255, 0.15)', border: '#ff00ff', isVowel: true }
+        { label: 'E', x: 0.58, y: 0.23, r: 0.18, color: 'rgba(255, 230, 0, 0.25)', border: '#d4af37', isVowel: true }, 
+        { label: 'A', x: 0.76, y: 0.54, r: 0.21, color: 'rgba(255, 0, 0, 0.15)', border: '#ff0000', isVowel: true }, 
+        { label: 'U', x: 0.22, y: 0.67, r: 0.18, color: 'rgba(0, 0, 255, 0.15)', border: '#0000ff', isVowel: true }, 
+        { label: 'O', x: 0.50, y: 0.78, r: 0.21, color: 'rgba(255, 0, 255, 0.15)', border: '#ff00ff', isVowel: true }
     ];
 
     const romajiMap = {
@@ -448,7 +399,6 @@
         if (!isPlaying) return;
         if (activeTimerId !== null) return;
         
-        // 🌟 設定された秒数（ミリ秒）でタイマーを起動
         const delayMs = currentTimerSeconds * 1000;
         activeTimerId = setTimeout(async () => {
             await processStreamingBuffer();
@@ -515,9 +465,7 @@
         utterance.lang = 'ja-JP';
         const charCount = textToSpeak.length;
         
-        // 🌟 音声の引き伸ばしも、現在のタイマー設定秒数（currentTimerSeconds）に完全連動させる
         let targetRate = (charCount * 0.28) / currentTimerSeconds;
-        
         if (targetRate < 0.1) targetRate = 0.1;
         if (targetRate > 1.2) targetRate = 1.1; 
         
@@ -553,7 +501,6 @@
     function triggerConsonant(consonantKey) {
         initAudio();
         startOnDemandTimer();
-
         flickCancelled = true;
 
         let now = Date.now();
@@ -601,7 +548,7 @@
         vowels.forEach(v => {
             const cx = v.x * w;
             const cy = v.y * h;
-            const radius = v.r * baseSize * 0.95; // 余白ができたので丸を少し大きく戻す
+            const radius = v.r * baseSize * 0.9; 
 
             padCtx.fillStyle = v.color;
             padCtx.strokeStyle = v.border;
@@ -620,7 +567,7 @@
 
         const px = currentX * w, py = currentY * h;
         padCtx.strokeStyle = '#fff'; padCtx.lineWidth = 2;
-        padCtx.beginPath(); padCtx.arc(px, py, 6, 0, 2 * Math.PI);
+        padCtx.beginPath(); padCtx.arc(px, py, 5, 0, 2 * Math.PI);
         padCtx.fillStyle = isVowelTouching ? '#007bff' : 'rgba(255,255,255,0.2)';
         padCtx.fill(); padCtx.stroke();
     }
@@ -669,7 +616,6 @@
         drawPad();
     }
 
-    // 🌟 右手の子音ボタンのフリック判定用変数
     let consonantTouchStartY = 0;
     let activeConsonantTouchId = null;
 
@@ -715,21 +661,18 @@
         padCanvas.addEventListener('touchend', onTouchEnd);
         padCanvas.addEventListener('touchcancel', onTouchEnd);
 
-        // 🌟 右手ボタンのタッチ/フリックイベント制御
         document.querySelectorAll('.consonant-btn, .split-sub-btn').forEach(btn => {
-            // マウス操作（クリックは通常打鍵）
             btn.addEventListener('mousedown', (e) => { 
                 e.preventDefault(); 
                 const k = btn.getAttribute('data-consonant'); 
                 if(k) triggerConsonant(k); 
             });
 
-            // タッチ操作（タップ or Nのフリック）
             btn.addEventListener('touchstart', (e) => { 
                 e.preventDefault();
                 const touch = e.changedTouches[0];
                 activeConsonantTouchId = touch.identifier;
-                consonantTouchStartY = touch.clientY; // 押し始めのY座標を記録
+                consonantTouchStartY = touch.clientY; 
             }, { passive: false });
 
             btn.addEventListener('touchend', (e) => {
@@ -743,16 +686,11 @@
                         const k = btn.getAttribute('data-consonant');
                         const distanceY = touchEndY - consonantTouchStartY;
 
-                        // 🌟 「N」ボタンで、かつ指を大きく動かした（フリックした）場合は「ん」を単独入力
                         if (k === 'n' && Math.abs(distanceY) > 15) {
-                            console.log("【Nボタン・フリック検知】 -> ん");
-                            // フリック入力扱いなので、誤爆キャンセルは発動させない
                             injectChar("ん");
                         } else {
-                            // 通常のタップ（指があまり動いていない場合）は通常の打鍵処理
                             if (k) triggerConsonant(k);
                         }
-
                         activeConsonantTouchId = null;
                         break;
                     }
@@ -764,6 +702,7 @@
             });
         });
 
+        // 🌟 ボリュームとタイマーの横型スライダーイベント
         volSlider.addEventListener('input', (e) => {
             const val = e.target.value;
             volValueEl.textContent = val + "%";
@@ -772,14 +711,12 @@
             }
         });
 
-        // 🌟 ラグタイマースライダーのイベント
         timerSlider.addEventListener('input', (e) => {
             const val = parseFloat(e.target.value);
             currentTimerSeconds = val;
             timerValueEl.textContent = val.toFixed(1) + "s";
             convertedLogLabel.textContent = val.toFixed(1) + "秒変換：";
             
-            // スライダーを動かした瞬間に、古いタイマーが走っていればクリアして再セット
             if (activeTimerId !== null) {
                 clearTimeout(activeTimerId);
                 activeTimerId = setTimeout(async () => {
