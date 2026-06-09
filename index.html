@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>5秒タイマー連動型・音声合成ボード（フリック入力＆遡り促音搭載版）</title>
+    <title>可変タイマー＆Nフリック「ん」搭載ボード</title>
     <style>
         body { 
             font-family: sans-serif; 
@@ -172,19 +172,66 @@
         .right-panel-container {
             display: flex;
             flex-direction: column;
-            justify-content: center; 
+            justify-content: flex-start; /* 上寄せに変更 */
             height: 100%;
             background: #1e1e24;
             box-sizing: border-box;
             padding: 8px; 
             overflow: hidden;
+            gap: 8px; /* スライダーとボタンの隙間 */
+        }
+
+        /* 🌟 タイマー可変スライダー用のエリア */
+        .timer-control-container {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: #2a2a35;
+            padding: 6px 12px;
+            border-radius: 6px;
+            flex-shrink: 0;
+        }
+        
+        .timer-label {
+            font-size: 10px;
+            font-weight: bold;
+            color: #00ffcc;
+        }
+
+        .timer-slider {
+            flex-grow: 1;
+            margin: 0 10px;
+            -webkit-appearance: none;
+            appearance: none;
+            background: #444;
+            height: 6px;
+            border-radius: 3px;
+            outline: none;
+        }
+
+        .timer-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #00ffcc;
+            cursor: pointer;
+        }
+
+        #timerValue {
+            font-size: 11px;
+            font-weight: bold;
+            color: #fff;
+            width: 30px;
+            text-align: right;
         }
 
         .right-panel {
             display: grid;
             grid-template-rows: repeat(3, 1fr); 
             gap: 6px;
-            height: 96%; 
+            flex-grow: 1; /* 残りのスペースを埋める */
             box-sizing: border-box;
         }
 
@@ -260,7 +307,7 @@
         <span id="rawLog" class="log-text"></span>
     </div>
     <div class="log-row">
-        <span class="log-label">5秒ラグ変換：</span>
+        <span class="log-label" id="convertedLogLabel">5.0秒変換：</span>
         <span id="convertedLog" class="log-text"></span>
     </div>
 </div>
@@ -281,6 +328,13 @@
     </div>
 
     <div class="right-panel-container">
+        <!-- 🌟 タイマー可変スライダー -->
+        <div class="timer-control-container">
+            <span class="timer-label">LAG TIMER</span>
+            <input type="range" id="timerSlider" class="timer-slider" min="0.5" max="5.0" step="0.5" value="5.0">
+            <span id="timerValue">5.0s</span>
+        </div>
+
         <div class="right-panel">
             <div class="button-row">
                 <div class="consonant-btn btn-index playable-key" data-consonant="z"><span class="btn-label">Z</span><span class="btn-sub">ざ行</span></div>
@@ -300,7 +354,8 @@
             </div>
 
             <div class="button-row">
-                <div class="consonant-btn btn-index playable-key" data-consonant="n"><span class="btn-label">N</span><span class="btn-sub">な・ん</span></div>
+                <!-- 🌟 Nボタンはフリックで「ん」になるためサブテキストを変更 -->
+                <div class="consonant-btn btn-index playable-key" data-consonant="n"><span class="btn-label">N</span><span class="btn-sub">な/フリックん</span></div>
                 <div class="consonant-btn btn-middle playable-key" data-consonant="m"><span class="btn-label">M</span><span class="btn-sub">ま行</span></div>
                 <div class="consonant-btn btn-ring playable-key" data-consonant="r"><span class="btn-label">R</span><span class="btn-sub">ら行</span></div>
                 <div class="consonant-btn btn-little playable-key" data-consonant="vowel_trigger"><span class="btn-label">V</span><span class="btn-sub">母音トリガ</span></div>
@@ -320,21 +375,22 @@
     let lastProcessedIndex = 0;    
     let activeTimerId = null;      
     
-    // 🌟 促音（っ）判定用の変数
     let lastConsonantKey = null;
     let lastConsonantTime = 0;
 
-    // 🌟 フリック判定用の変数
     let touchStartVowelLabel = null;
     let flickCancelled = false;
+
+    // 🌟 ラグタイマー用の変数（初期値 5.0秒 = 5000ms）
+    let currentTimerSeconds = 5.0;
     
+    // 🌟 「ん（NN）」を削除し、5つの母音のみの美しい五芒星レイアウトに変更
     const vowels = [
         { label: 'I', x: 0.25, y: 0.26, r: 0.22, color: 'rgba(0, 200, 0, 0.15)', border: '#00cc00', isVowel: true }, 
-        { label: 'E', x: 0.58, y: 0.23, r: 0.18, color: 'rgba(255, 230, 0, 0.25)', border: '#d4af37', isVowel: true }, 
-        { label: 'A', x: 0.76, y: 0.54, r: 0.21, color: 'rgba(255, 0, 0, 0.15)', border: '#ff0000', isVowel: true }, 
-        { label: 'U', x: 0.22, y: 0.67, r: 0.18, color: 'rgba(0, 0, 255, 0.15)', border: '#0000ff', isVowel: true }, 
-        { label: 'O', x: 0.50, y: 0.78, r: 0.21, color: 'rgba(255, 0, 255, 0.15)', border: '#ff00ff', isVowel: true },
-        { label: 'NN', x: 0.46, y: 0.50, r: 0.12, color: 'rgba(255, 255, 255, 0.1)', border: '#ffffff', isVowel: false } 
+        { label: 'E', x: 0.75, y: 0.26, r: 0.22, color: 'rgba(255, 230, 0, 0.25)', border: '#d4af37', isVowel: true }, 
+        { label: 'A', x: 0.50, y: 0.50, r: 0.22, color: 'rgba(255, 0, 0, 0.15)', border: '#ff0000', isVowel: true }, 
+        { label: 'U', x: 0.25, y: 0.74, r: 0.22, color: 'rgba(0, 0, 255, 0.15)', border: '#0000ff', isVowel: true }, 
+        { label: 'O', x: 0.75, y: 0.74, r: 0.22, color: 'rgba(255, 0, 255, 0.15)', border: '#ff00ff', isVowel: true }
     ];
 
     const romajiMap = {
@@ -353,7 +409,6 @@
         'PA':'ぱ','PI':'ぴ','PU':'ぷ','PE':'ぺ','PO':'ぽ'
     };
 
-    // フリックによる完全入力ができたため、不要なファジーを整理。しゃしゅしょ等の右手入力用は残します
     const fuzzyRules = [
         { pattern: /しあ/g, alt: "しゃ" }, 
         { pattern: /しう/g, alt: "しゅ" }, 
@@ -374,6 +429,10 @@
     const convertedLogEl = document.getElementById('convertedLog');
     const volSlider = document.getElementById('volSlider');
     const volValueEl = document.getElementById('volValue');
+    
+    const timerSlider = document.getElementById('timerSlider');
+    const timerValueEl = document.getElementById('timerValue');
+    const convertedLogLabel = document.getElementById('convertedLogLabel');
 
     function initAudio() {
         if (!audioCtx) {
@@ -388,10 +447,13 @@
     function startOnDemandTimer() {
         if (!isPlaying) return;
         if (activeTimerId !== null) return;
+        
+        // 🌟 設定された秒数（ミリ秒）でタイマーを起動
+        const delayMs = currentTimerSeconds * 1000;
         activeTimerId = setTimeout(async () => {
             await processStreamingBuffer();
             activeTimerId = null;
-        }, 5000);
+        }, delayMs);
     }
 
     async function processStreamingBuffer() {
@@ -452,20 +514,22 @@
         const utterance = new SpeechSynthesisUtterance(textToSpeak);
         utterance.lang = 'ja-JP';
         const charCount = textToSpeak.length;
-        let targetRate = (charCount * 0.28) / 5.0;
+        
+        // 🌟 音声の引き伸ばしも、現在のタイマー設定秒数（currentTimerSeconds）に完全連動させる
+        let targetRate = (charCount * 0.28) / currentTimerSeconds;
+        
         if (targetRate < 0.1) targetRate = 0.1;
         if (targetRate > 1.2) targetRate = 1.1; 
+        
         utterance.rate = targetRate; 
         utterance.pitch = 0.95; 
         utterance.volume = Math.min(1.0, parseFloat(volSlider.value) / 100);
         window.speechSynthesis.speak(utterance);
     }
 
-    // 🌟 Canvasの座標から一番近い「ラベル(A, I, U, E, O)」を取得
     function getClosestVowelLabelRaw() {
-        const pureVowels = vowels.filter(v => v.isVowel); 
         let maxWeight = -1, targetLabel = 'A';
-        pureVowels.forEach(v => {
+        vowels.forEach(v => {
             const distance = Math.sqrt(Math.pow(currentX - v.x, 2) + Math.pow(currentY - v.y, 2));
             const weight = distance === 0 ? 999999 : 1 / Math.pow(distance, 2);
             if (weight > maxWeight) { maxWeight = weight; targetLabel = v.label; }
@@ -473,18 +537,6 @@
         return targetLabel;
     }
 
-    // 🌟 これまでの「ん」も含めた判定（右手打鍵用）
-    function getCurrentVowelLabel() {
-        const nnTarget = vowels.find(v => v.label === 'NN');
-        const dxNN = currentX - nnTarget.x;
-        const dyNN = currentY - nnTarget.y;
-        if (Math.sqrt(dxNN*dxNN + dyNN*dyNN) <= nnTarget.r) {
-            return 'ん';
-        }
-        return getClosestVowelLabelRaw();
-    }
-
-    // 🌟 独立した文字（フリックや促音）を配列に流し込む関数
     function injectChar(char) {
         initAudio();
         startOnDemandTimer();
@@ -502,13 +554,11 @@
         initAudio();
         startOnDemandTimer();
 
-        // 🌟 右手ボタンが叩かれたので、進行中の左手フリックは誤爆防止のためキャンセル
         flickCancelled = true;
 
         let now = Date.now();
         let isSokuon = false;
 
-        // 🌟 促音（っ）の判定ロジック：母音トリガ以外で、同じ子音を300ms以内に連打した場合
         if (consonantKey !== 'vowel_trigger' && consonantKey === lastConsonantKey && (now - lastConsonantTime) < 300) {
             isSokuon = true;
         }
@@ -517,24 +567,19 @@
         lastConsonantTime = now;
 
         let pressedChar = "";
-        const currentVowel = getCurrentVowelLabel();
+        const currentVowel = getClosestVowelLabelRaw();
 
         if (consonantKey === 'vowel_trigger') {
-            pressedChar = currentVowel === 'ん' ? 'ん' : romajiMap[currentVowel];
+            pressedChar = romajiMap[currentVowel];
         } else {
-            if (currentVowel === 'ん') {
-                pressedChar = romajiMap[consonantKey.toUpperCase() + 'A'] + 'ん';
-            } else {
-                const romaji = consonantKey.toUpperCase() + currentVowel;
-                pressedChar = romajiMap[romaji] || "";
-            }
+            const romaji = consonantKey.toUpperCase() + currentVowel;
+            pressedChar = romajiMap[romaji] || "";
         }
 
         if (pressedChar) {
-            // 🌟 促音判定がTrueの場合、直前の文字を消して「っ」にすり替える（遡り処理）
             if (isSokuon && rawHistoryArray.length > 0) {
-                rawHistoryArray.pop(); // 1文字前を削除
-                rawHistoryArray.push('っ'); // 代わりに「っ」を挿入
+                rawHistoryArray.pop(); 
+                rawHistoryArray.push('っ'); 
             }
             injectChar(pressedChar);
         }
@@ -556,18 +601,18 @@
         vowels.forEach(v => {
             const cx = v.x * w;
             const cy = v.y * h;
-            const radius = v.r * baseSize * 0.9; 
+            const radius = v.r * baseSize * 0.95; // 余白ができたので丸を少し大きく戻す
 
             padCtx.fillStyle = v.color;
             padCtx.strokeStyle = v.border;
-            padCtx.lineWidth = v.isVowel ? 1.5 : 2.5; 
+            padCtx.lineWidth = 2.5; 
             padCtx.beginPath();
             padCtx.arc(cx, cy, radius, 0, 2 * Math.PI);
             padCtx.fill();
             padCtx.stroke();
 
             padCtx.fillStyle = '#fff';
-            padCtx.font = v.isVowel ? 'bold 13px sans-serif' : 'bold 11px sans-serif'; 
+            padCtx.font = 'bold 16px sans-serif'; 
             padCtx.textAlign = 'center';
             padCtx.textBaseline = 'middle';
             padCtx.fillText(v.label, cx, cy);
@@ -575,7 +620,7 @@
 
         const px = currentX * w, py = currentY * h;
         padCtx.strokeStyle = '#fff'; padCtx.lineWidth = 2;
-        padCtx.beginPath(); padCtx.arc(px, py, 5, 0, 2 * Math.PI);
+        padCtx.beginPath(); padCtx.arc(px, py, 6, 0, 2 * Math.PI);
         padCtx.fillStyle = isVowelTouching ? '#007bff' : 'rgba(255,255,255,0.2)';
         padCtx.fill(); padCtx.stroke();
     }
@@ -586,12 +631,11 @@
         currentY = Math.max(0, Math.min(1, (touchOrEvent.clientY - rect.top) / rect.height));
     }
 
-    // 🌟 フリック入力を司るタッチイベント制御
     function handlePadStart(e) {
         isVowelTouching = true;
-        flickCancelled = false; // 新しいタッチが始まったらキャンセル状態をリセット
+        flickCancelled = false; 
         updateVowelCoords(e);
-        touchStartVowelLabel = getClosestVowelLabelRaw(); // 開始地点の母音を記録（I または U）
+        touchStartVowelLabel = getClosestVowelLabelRaw(); 
         drawPad();
     }
 
@@ -604,9 +648,8 @@
 
     function handlePadEnd() {
         isVowelTouching = false;
-        let touchEndVowelLabel = getClosestVowelLabelRaw(); // 終了地点の母音を取得
+        let touchEndVowelLabel = getClosestVowelLabelRaw(); 
 
-        // 🌟 もし途中で右手を叩かれておらず、かつ開始位置と終了位置の母音が違う場合＝「フリック成立」
         if (!flickCancelled && touchStartVowelLabel && touchEndVowelLabel !== touchStartVowelLabel) {
             const combo = touchStartVowelLabel + '->' + touchEndVowelLabel;
             let flickChar = "";
@@ -618,7 +661,6 @@
             else if (combo === 'I->O') flickChar = 'よ';
 
             if (flickChar) {
-                console.log(`【フリック判定成立】${combo} ➡️ ${flickChar}`);
                 injectChar(flickChar);
             }
         }
@@ -627,15 +669,17 @@
         drawPad();
     }
 
+    // 🌟 右手の子音ボタンのフリック判定用変数
+    let consonantTouchStartY = 0;
+    let activeConsonantTouchId = null;
+
     function setupInputEvents() {
-        // マウス操作
         padCanvas.addEventListener('mousedown', handlePadStart);
         window.addEventListener('mousemove', handlePadMove);
         window.addEventListener('mouseup', () => {
             if (activeVowelTouchId === null && isVowelTouching) handlePadEnd();
         });
 
-        // タッチパネル操作
         padCanvas.addEventListener('touchstart', (e) => {
             e.preventDefault();
             if (!isVowelTouching) {
@@ -671,23 +715,77 @@
         padCanvas.addEventListener('touchend', onTouchEnd);
         padCanvas.addEventListener('touchcancel', onTouchEnd);
 
-        // 子音ボタンの操作
+        // 🌟 右手ボタンのタッチ/フリックイベント制御
         document.querySelectorAll('.consonant-btn, .split-sub-btn').forEach(btn => {
-            const trigger = (e) => { 
+            // マウス操作（クリックは通常打鍵）
+            btn.addEventListener('mousedown', (e) => { 
                 e.preventDefault(); 
                 const k = btn.getAttribute('data-consonant'); 
                 if(k) triggerConsonant(k); 
-            };
-            btn.addEventListener('mousedown', trigger);
-            btn.addEventListener('touchstart', trigger, { passive: false });
+            });
+
+            // タッチ操作（タップ or Nのフリック）
+            btn.addEventListener('touchstart', (e) => { 
+                e.preventDefault();
+                const touch = e.changedTouches[0];
+                activeConsonantTouchId = touch.identifier;
+                consonantTouchStartY = touch.clientY; // 押し始めのY座標を記録
+            }, { passive: false });
+
+            btn.addEventListener('touchend', (e) => {
+                e.preventDefault();
+                if (activeConsonantTouchId === null) return;
+
+                for (let i = 0; i < e.changedTouches.length; i++) {
+                    const touch = e.changedTouches[i];
+                    if (touch.identifier === activeConsonantTouchId) {
+                        const touchEndY = touch.clientY;
+                        const k = btn.getAttribute('data-consonant');
+                        const distanceY = touchEndY - consonantTouchStartY;
+
+                        // 🌟 「N」ボタンで、かつ指を大きく動かした（フリックした）場合は「ん」を単独入力
+                        if (k === 'n' && Math.abs(distanceY) > 15) {
+                            console.log("【Nボタン・フリック検知】 -> ん");
+                            // フリック入力扱いなので、誤爆キャンセルは発動させない
+                            injectChar("ん");
+                        } else {
+                            // 通常のタップ（指があまり動いていない場合）は通常の打鍵処理
+                            if (k) triggerConsonant(k);
+                        }
+
+                        activeConsonantTouchId = null;
+                        break;
+                    }
+                }
+            });
+            
+            btn.addEventListener('touchcancel', () => {
+                activeConsonantTouchId = null;
+            });
         });
 
-        // ボリュームスライダー
         volSlider.addEventListener('input', (e) => {
             const val = e.target.value;
             volValueEl.textContent = val + "%";
             if (mainGain) {
                 mainGain.gain.value = parseFloat(val) / 100;
+            }
+        });
+
+        // 🌟 ラグタイマースライダーのイベント
+        timerSlider.addEventListener('input', (e) => {
+            const val = parseFloat(e.target.value);
+            currentTimerSeconds = val;
+            timerValueEl.textContent = val.toFixed(1) + "s";
+            convertedLogLabel.textContent = val.toFixed(1) + "秒変換：";
+            
+            // スライダーを動かした瞬間に、古いタイマーが走っていればクリアして再セット
+            if (activeTimerId !== null) {
+                clearTimeout(activeTimerId);
+                activeTimerId = setTimeout(async () => {
+                    await processStreamingBuffer();
+                    activeTimerId = null;
+                }, currentTimerSeconds * 1000);
             }
         });
     }
